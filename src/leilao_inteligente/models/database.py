@@ -75,6 +75,7 @@ class Lote(Base):
     confianca_media: Mapped[float] = mapped_column(Float, default=0.0)
     aparicoes: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(20), default="incerto")
+    frame_paths: Mapped[str | None] = mapped_column(String(2000), nullable=True)
 
     leilao: Mapped["Leilao"] = relationship(back_populates="lotes")
 
