@@ -47,16 +47,44 @@ class TestNormalizarDados:
         resultado = normalizar_dados(dados)
         assert resultado["pelagem"] == "branco"
 
+    def test_normaliza_lote_numero_int_para_str(self):
+        dados = {"lote_numero": 5}
+        resultado = normalizar_dados(dados)
+        assert resultado["lote_numero"] == "5"
+
+    def test_normaliza_lote_numero_alfanumerico(self):
+        dados = {"lote_numero": "001A"}
+        resultado = normalizar_dados(dados)
+        assert resultado["lote_numero"] == "001A"
+
+    def test_normaliza_fazenda_remove_recinto(self):
+        dados = {"fazenda_vendedor": "Recinto FAZ. SANTO ANTONIO"}
+        resultado = normalizar_dados(dados)
+        assert resultado["fazenda_vendedor"] == "FAZ. SANTO ANTONIO"
+
+    def test_normaliza_fazenda_maiuscula(self):
+        dados = {"fazenda_vendedor": "faz. juliana"}
+        resultado = normalizar_dados(dados)
+        assert resultado["fazenda_vendedor"] == "FAZ. JULIANA"
+
+    def test_normaliza_timestamp_video(self):
+        dados = {"timestamp_video": "26/03/2026 20:54:21"}
+        resultado = normalizar_dados(dados)
+        assert isinstance(resultado["timestamp_video"], datetime)
+        assert resultado["timestamp_video"].year == 2026
+        assert resultado["timestamp_video"].hour == 20
+
 
 class TestValidarLote:
     def test_valida_lote_correto(self, dados_lote_valido, timestamp_fixture):
         resultado = validar_lote(dados_lote_valido, timestamp_frame=timestamp_fixture)
         assert resultado is not None
-        assert resultado.lote_numero == 5
+        assert resultado.lote_numero == "0005"
         assert resultado.quantidade == 35
         assert resultado.raca == "Nelore"
         assert resultado.sexo == "macho"
         assert resultado.preco_lance == Decimal("3290")
+        assert resultado.fazenda_vendedor == "FAZ. JULIANA"
 
     def test_valida_lote_sujo_apos_normalizacao(self, dados_lote_sujo, timestamp_fixture):
         resultado = validar_lote(dados_lote_sujo, timestamp_frame=timestamp_fixture)
@@ -64,6 +92,7 @@ class TestValidarLote:
         assert resultado.sexo == "macho"
         assert resultado.local_estado == "SP"
         assert resultado.pelagem == "branco"
+        assert resultado.fazenda_vendedor == "FAZ. SANTO ANTONIO"
 
     def test_rejeita_lote_invalido(self, dados_lote_invalido, timestamp_fixture):
         resultado = validar_lote(dados_lote_invalido, timestamp_frame=timestamp_fixture)
@@ -74,10 +103,15 @@ class TestValidarLote:
         resultado = validar_lote(dados_lote_valido, timestamp_frame=timestamp_fixture)
         assert resultado is None
 
-    def test_rejeita_preco_muito_baixo(self, dados_lote_valido, timestamp_fixture):
-        dados_lote_valido["preco_lance"] = 50
-        resultado = validar_lote(dados_lote_valido, timestamp_frame=timestamp_fixture)
-        assert resultado is None
+    def test_aceita_preco_zero(self, dados_lote_preco_zero, timestamp_fixture):
+        resultado = validar_lote(dados_lote_preco_zero, timestamp_frame=timestamp_fixture)
+        assert resultado is not None
+        assert resultado.preco_lance == Decimal("0")
+
+    def test_aceita_lote_alfanumerico(self, dados_lote_alfanumerico, timestamp_fixture):
+        resultado = validar_lote(dados_lote_alfanumerico, timestamp_frame=timestamp_fixture)
+        assert resultado is not None
+        assert resultado.lote_numero == "001A"
 
     def test_lote_sem_idade_aceito(self, dados_lote_valido, timestamp_fixture):
         dados_lote_valido["idade_meses"] = None
@@ -90,3 +124,9 @@ class TestValidarLote:
         resultado = validar_lote(dados_lote_valido, timestamp_frame=timestamp_fixture)
         assert resultado is not None
         assert resultado.pelagem is None
+
+    def test_lote_sem_fazenda_aceito(self, dados_lote_valido, timestamp_fixture):
+        dados_lote_valido["fazenda_vendedor"] = None
+        resultado = validar_lote(dados_lote_valido, timestamp_frame=timestamp_fixture)
+        assert resultado is not None
+        assert resultado.fazenda_vendedor is None

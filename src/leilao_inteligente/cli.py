@@ -186,23 +186,27 @@ def detalhe(
         return
 
     table = Table(title=f"Lotes ({len(lotes)} total)")
-    table.add_column("Lote", justify="right", style="cyan")
+    table.add_column("Lote", style="cyan")
     table.add_column("Qtd", justify="right")
     table.add_column("Raca", style="white")
     table.add_column("Sexo", style="blue")
     table.add_column("Idade", justify="right")
-    table.add_column("Pelagem")
-    table.add_column("Lance Inicial", justify="right", style="yellow")
-    table.add_column("Arrematacao", justify="right", style="green")
+    table.add_column("Fazenda")
+    table.add_column("P.Inicial", justify="right", style="yellow")
+    table.add_column("P.Final", justify="right", style="green")
     table.add_column("R$/cab", justify="right", style="magenta")
+    table.add_column("Status")
     table.add_column("Conf.", justify="right")
 
     for lote in lotes:
         idade = f"{lote.idade_meses}m" if lote.idade_meses else "-"
-        lance = f"R${lote.preco_lance_inicial:,.2f}" if lote.preco_lance_inicial else "-"
-        arrematacao = f"R${lote.preco_arrematacao:,.2f}" if lote.preco_arrematacao else "-"
+        p_inicial = f"R${lote.preco_inicial:,.2f}" if lote.preco_inicial else "-"
+        p_final = f"R${lote.preco_final:,.2f}" if lote.preco_final else "-"
         por_cabeca = f"R${lote.preco_por_cabeca:,.2f}" if lote.preco_por_cabeca else "-"
         conf = f"{lote.confianca_media:.0%}" if lote.confianca_media else "-"
+        fazenda = (lote.fazenda_vendedor or "-")[:20]
+        status_style = {"arrematado": "green", "repescagem": "red", "incerto": "dim"}.get(lote.status, "")
+        status_text = f"[{status_style}]{lote.status}[/{status_style}]" if status_style else lote.status
 
         table.add_row(
             str(lote.lote_numero),
@@ -210,10 +214,11 @@ def detalhe(
             lote.raca,
             lote.sexo,
             idade,
-            lote.pelagem or "-",
-            lance,
-            arrematacao,
+            fazenda,
+            p_inicial,
+            p_final,
             por_cabeca,
+            status_text,
             conf,
         )
 
@@ -224,15 +229,16 @@ def detalhe(
 def _exibir_lotes(lotes: list, titulo: str = "") -> None:
     """Exibe lotes consolidados em tabela Rich."""
     table = Table(title=f"Lotes extraidos: {titulo}" if titulo else "Lotes extraidos")
-    table.add_column("Lote", justify="right", style="cyan")
+    table.add_column("Lote", style="cyan")
     table.add_column("Qtd", justify="right")
     table.add_column("Raca")
     table.add_column("Sexo")
     table.add_column("Idade")
-    table.add_column("Pelagem")
-    table.add_column("Lance Inicial", justify="right", style="yellow")
-    table.add_column("Arrematacao", justify="right", style="green")
-    table.add_column("Confianca", justify="right")
+    table.add_column("Fazenda")
+    table.add_column("P.Inicial", justify="right", style="yellow")
+    table.add_column("P.Final", justify="right", style="green")
+    table.add_column("Status")
+    table.add_column("Conf.", justify="right")
 
     for lote in lotes:
         idade = f"{lote.idade_meses}m" if lote.idade_meses else "-"
@@ -242,9 +248,10 @@ def _exibir_lotes(lotes: list, titulo: str = "") -> None:
             lote.raca,
             lote.sexo,
             idade,
-            lote.pelagem or "-",
-            f"R${lote.preco_lance_inicial:,.2f}",
-            f"R${lote.preco_arrematacao:,.2f}" if lote.preco_arrematacao else "-",
+            (lote.fazenda_vendedor or "-")[:20],
+            f"R${lote.preco_inicial:,.2f}",
+            f"R${lote.preco_final:,.2f}",
+            lote.status,
             f"{lote.confianca_media:.0%}",
         )
 

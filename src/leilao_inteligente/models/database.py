@@ -55,28 +55,31 @@ class Lote(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     leilao_id: Mapped[int] = mapped_column(ForeignKey("leiloes.id"))
-    lote_numero: Mapped[int] = mapped_column(Integer)
+    lote_numero: Mapped[str] = mapped_column(String(10))
     quantidade: Mapped[int] = mapped_column(Integer)
     raca: Mapped[str] = mapped_column(String(50))
     sexo: Mapped[str] = mapped_column(String(10))
     idade_meses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pelagem: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    preco_lance_inicial: Mapped[Decimal] = mapped_column(Numeric(10, 2))
-    preco_arrematacao: Mapped[Decimal | None] = mapped_column(
-        Numeric(10, 2), nullable=True
-    )
+    preco_inicial: Mapped[Decimal] = mapped_column(Numeric(10, 2))
+    preco_final: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     preco_por_cabeca: Mapped[Decimal | None] = mapped_column(
         Numeric(10, 2), nullable=True
     )
+    fazenda_vendedor: Mapped[str | None] = mapped_column(String(200), nullable=True)
     timestamp_inicio: Mapped[datetime] = mapped_column(DateTime)
     timestamp_fim: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    timestamp_video_inicio: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    timestamp_video_fim: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     frames_analisados: Mapped[int] = mapped_column(Integer, default=1)
     confianca_media: Mapped[float] = mapped_column(Float, default=0.0)
+    aparicoes: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(20), default="incerto")
 
     leilao: Mapped["Leilao"] = relationship(back_populates="lotes")
 
     def __repr__(self) -> str:
         return (
             f"<Lote(id={self.id}, lote={self.lote_numero}, "
-            f"{self.quantidade}x {self.raca} {self.sexo})>"
+            f"{self.quantidade}x {self.raca} {self.sexo}, status={self.status})>"
         )

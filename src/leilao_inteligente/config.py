@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(description="Chave da API Gemini")
 
     # Processamento
-    frame_interval_seconds: int = Field(default=15, ge=5, le=60)
+    frame_interval_seconds: int = Field(default=5, ge=1, le=60)
     change_threshold: float = Field(default=0.15, ge=0.05, le=0.5)
     overlay_region_top_percent: int = Field(default=70, ge=50, le=90)
 

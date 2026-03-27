@@ -17,20 +17,11 @@ def salvar_leilao(
     info: LeilaoInfo,
     lotes: list[LoteConsolidado],
 ) -> Leilao:
-    """Salva um leilao completo com seus lotes no banco.
-
-    Args:
-        info: Metadados do leilao.
-        lotes: Lista de lotes consolidados.
-
-    Returns:
-        Instancia do Leilao salvo.
-    """
+    """Salva um leilao completo com seus lotes no banco."""
     init_db()
     session = get_session()
 
     try:
-        # Verificar se video ja foi processado
         existente = (
             session.query(Leilao)
             .filter(Leilao.url_video == info.url_video)
@@ -53,7 +44,7 @@ def salvar_leilao(
             status="completo",
         )
         session.add(leilao)
-        session.flush()  # obter ID
+        session.flush()
 
         for lote_data in lotes:
             lote = Lote(
@@ -64,13 +55,18 @@ def salvar_leilao(
                 sexo=lote_data.sexo,
                 idade_meses=lote_data.idade_meses,
                 pelagem=lote_data.pelagem,
-                preco_lance_inicial=lote_data.preco_lance_inicial,
-                preco_arrematacao=lote_data.preco_arrematacao,
+                preco_inicial=lote_data.preco_inicial,
+                preco_final=lote_data.preco_final,
                 preco_por_cabeca=lote_data.preco_por_cabeca,
+                fazenda_vendedor=lote_data.fazenda_vendedor,
                 timestamp_inicio=lote_data.timestamp_inicio,
                 timestamp_fim=lote_data.timestamp_fim,
+                timestamp_video_inicio=lote_data.timestamp_video_inicio,
+                timestamp_video_fim=lote_data.timestamp_video_fim,
                 frames_analisados=lote_data.frames_analisados,
                 confianca_media=lote_data.confianca_media,
+                aparicoes=lote_data.aparicoes,
+                status=lote_data.status,
             )
             session.add(lote)
 
@@ -100,7 +96,7 @@ def listar_leiloes() -> list[Leilao]:
 
 
 def obter_leilao(leilao_id: int) -> Leilao | None:
-    """Retorna um leilao pelo ID com seus lotes."""
+    """Retorna um leilao pelo ID."""
     init_db()
     session = get_session()
     try:

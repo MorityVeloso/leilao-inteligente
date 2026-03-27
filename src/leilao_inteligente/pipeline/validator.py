@@ -20,15 +20,13 @@ UFS_VALIDAS = {
 
 
 def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
-    """Normaliza dados brutos antes da validacao Pydantic.
-
-    Trata inconsistencias comuns na resposta do Gemini:
-    - Converte preco de string para Decimal
-    - Normaliza sexo (maiusculas, acentos)
-    - Normaliza UF para maiuscula
-    - Remove espacos extras
-    """
+    """Normaliza dados brutos antes da validacao Pydantic."""
     resultado = dict(dados)
+
+    # Normalizar lote_numero para string
+    lote = resultado.get("lote_numero")
+    if lote is not None:
+        resultado["lote_numero"] = str(lote).strip()
 
     # Normalizar preco
     preco = resultado.get("preco_lance")
@@ -75,6 +73,29 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     if isinstance(pelagem, str):
         resultado["pelagem"] = pelagem.strip().lower()
 
+    # Normalizar fazenda
+    fazenda = resultado.get("fazenda_vendedor")
+    if isinstance(fazenda, str):
+        fazenda = fazenda.strip()
+        if fazenda.upper().startswith("RECINTO "):
+            fazenda = fazenda[8:]
+        resultado["fazenda_vendedor"] = fazenda.strip().upper()
+    elif fazenda is None:
+        resultado["fazenda_vendedor"] = None
+
+    # Normalizar timestamp_video
+    ts_video = resultado.get("timestamp_video")
+    if isinstance(ts_video, str):
+        ts_video = ts_video.strip()
+        for fmt in ["%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%Y-%m-%d %H:%M:%S"]:
+            try:
+                resultado["timestamp_video"] = datetime.strptime(ts_video, fmt)
+                break
+            except ValueError:
+                continue
+        else:
+            resultado["timestamp_video"] = None
+
     return resultado
 
 
@@ -82,15 +103,7 @@ def validar_lote(
     dados: dict[str, object],
     timestamp_frame: datetime | None = None,
 ) -> LoteExtraido | None:
-    """Valida dados extraidos e retorna LoteExtraido ou None.
-
-    Args:
-        dados: Dict com dados brutos do Gemini.
-        timestamp_frame: Timestamp do frame no video.
-
-    Returns:
-        LoteExtraido validado ou None se dados invalidos.
-    """
+    """Valida dados extraidos e retorna LoteExtraido ou None."""
     normalizados = normalizar_dados(dados)
 
     # Adicionar timestamp se nao presente

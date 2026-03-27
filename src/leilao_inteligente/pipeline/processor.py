@@ -1,6 +1,7 @@
 """Orquestrador do pipeline de processamento de videos."""
 
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -18,31 +19,71 @@ from leilao_inteligente.pipeline.vision import extrair_dados_frame
 
 logger = logging.getLogger(__name__)
 
+# Minimo de minutos entre aparicoes do mesmo lote para considerar repescagem
+REPESCAGEM_MIN_MINUTOS = 10
+
 
 def consolidar_lotes(lotes_extraidos: list[LoteExtraido]) -> list[LoteConsolidado]:
     """Agrupa frames por lote e consolida em registros unicos.
 
-    Para cada lote:
-    - Primeiro frame → preco_lance_inicial
-    - Ultimo frame → preco_arrematacao
-    - Calcula preco_por_cabeca
-    - Calcula confianca media
+    Logica:
+    - Agrupa frames pelo lote_numero
+    - Descarta frames com preco = 0 (transicao de overlay)
+    - Exige 2+ frames concordantes para confirmar lote
+    - Detecta repescagem (mesmo lote aparece com gap > 10min)
+    - Determina status: arrematado | repescagem | incerto
     """
-    por_lote: dict[int, list[LoteExtraido]] = {}
+    # Agrupar por lote
+    por_lote: dict[str, list[LoteExtraido]] = defaultdict(list)
     for lote in lotes_extraidos:
-        por_lote.setdefault(lote.lote_numero, []).append(lote)
+        por_lote[lote.lote_numero].append(lote)
 
     consolidados: list[LoteConsolidado] = []
 
-    for _numero, frames_lote in sorted(por_lote.items()):
-        frames_lote.sort(key=lambda x: x.timestamp_frame)
-        primeiro = frames_lote[0]
-        ultimo = frames_lote[-1]
+    for numero, frames_lote in sorted(por_lote.items()):
+        # Filtrar frames com preco > 0 (descartar transicoes)
+        frames_com_preco = [f for f in frames_lote if f.preco_lance > 0]
 
-        preco_arrematacao = ultimo.preco_lance
+        if not frames_com_preco:
+            logger.debug("Lote %s: todos os frames com preco 0, descartando", numero)
+            continue
+
+        # Exigir 2+ frames para confirmar (evitar frames de transicao sujos)
+        # Excecao: se so tem 1 frame mas confianca >= 0.9, aceitar
+        if len(frames_com_preco) < 2:
+            if frames_com_preco[0].confianca < 0.9:
+                logger.debug(
+                    "Lote %s: apenas 1 frame com confianca %.0f%%, descartando",
+                    numero, frames_com_preco[0].confianca * 100,
+                )
+                continue
+
+        frames_com_preco.sort(key=lambda x: x.timestamp_frame)
+
+        # Detectar aparicoes (repescagem)
+        aparicoes = _contar_aparicoes(frames_com_preco)
+
+        # Usar ultima aparicao como definitiva (repescagem sobrescreve)
+        if aparicoes > 1:
+            frames_com_preco = _pegar_ultima_aparicao(frames_com_preco)
+
+        primeiro = frames_com_preco[0]
+        ultimo = frames_com_preco[-1]
+
+        preco_inicial = primeiro.preco_lance
+        preco_final = ultimo.preco_lance
+
+        # Status
+        if aparicoes > 1:
+            status = "repescagem"
+        elif preco_final > preco_inicial:
+            status = "arrematado"
+        else:
+            status = "incerto"
+
         preco_por_cabeca: Decimal | None = None
-        if primeiro.quantidade > 0:
-            preco_por_cabeca = preco_arrematacao / primeiro.quantidade
+        if primeiro.quantidade > 0 and preco_final > 0:
+            preco_por_cabeca = preco_final / primeiro.quantidade
 
         consolidado = LoteConsolidado(
             lote_numero=primeiro.lote_numero,
@@ -51,15 +92,20 @@ def consolidar_lotes(lotes_extraidos: list[LoteExtraido]) -> list[LoteConsolidad
             sexo=primeiro.sexo,
             idade_meses=primeiro.idade_meses,
             pelagem=primeiro.pelagem,
-            preco_lance_inicial=primeiro.preco_lance,
-            preco_arrematacao=preco_arrematacao,
+            preco_inicial=preco_inicial,
+            preco_final=preco_final,
             preco_por_cabeca=preco_por_cabeca,
             local_cidade=primeiro.local_cidade,
             local_estado=primeiro.local_estado,
+            fazenda_vendedor=primeiro.fazenda_vendedor,
             timestamp_inicio=primeiro.timestamp_frame,
             timestamp_fim=ultimo.timestamp_frame,
-            frames_analisados=len(frames_lote),
-            confianca_media=sum(f.confianca for f in frames_lote) / len(frames_lote),
+            timestamp_video_inicio=primeiro.timestamp_video,
+            timestamp_video_fim=ultimo.timestamp_video,
+            frames_analisados=len(frames_com_preco),
+            confianca_media=sum(f.confianca for f in frames_com_preco) / len(frames_com_preco),
+            aparicoes=aparicoes,
+            status=status,
         )
         consolidados.append(consolidado)
 
@@ -67,15 +113,36 @@ def consolidar_lotes(lotes_extraidos: list[LoteExtraido]) -> list[LoteConsolidad
     return consolidados
 
 
+def _contar_aparicoes(frames: list[LoteExtraido]) -> int:
+    """Conta quantas vezes um lote apareceu (separado por gaps > REPESCAGEM_MIN_MINUTOS)."""
+    if len(frames) <= 1:
+        return 1
+
+    aparicoes = 1
+    for i in range(1, len(frames)):
+        diff = (frames[i].timestamp_frame - frames[i - 1].timestamp_frame).total_seconds()
+        if diff > REPESCAGEM_MIN_MINUTOS * 60:
+            aparicoes += 1
+
+    return aparicoes
+
+
+def _pegar_ultima_aparicao(frames: list[LoteExtraido]) -> list[LoteExtraido]:
+    """Retorna frames da ultima aparicao (apos ultimo gap grande)."""
+    if len(frames) <= 1:
+        return frames
+
+    ultimo_gap_idx = 0
+    for i in range(1, len(frames)):
+        diff = (frames[i].timestamp_frame - frames[i - 1].timestamp_frame).total_seconds()
+        if diff > REPESCAGEM_MIN_MINUTOS * 60:
+            ultimo_gap_idx = i
+
+    return frames[ultimo_gap_idx:]
+
+
 def processar_video(url: str) -> list[LoteConsolidado]:
-    """Pipeline completo: download → frames → deteccao → extracao → consolidacao.
-
-    Args:
-        url: URL do video no YouTube.
-
-    Returns:
-        Lista de lotes consolidados extraidos do video.
-    """
+    """Pipeline completo: download → frames → deteccao → extracao → consolidacao."""
     settings = get_settings()
 
     with Progress(

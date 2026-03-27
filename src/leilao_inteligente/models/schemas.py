@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 class LoteExtraido(BaseModel):
     """Dados brutos extraidos pelo Gemini de um frame de leilao."""
 
-    lote_numero: int = Field(ge=1, le=9999, description="Numero do lote")
+    lote_numero: str = Field(min_length=1, max_length=10, description="Numero do lote (pode ser alfanumerico: 5, 001A, 55A)")
     quantidade: int = Field(ge=1, le=500, description="Quantidade de animais")
     raca: str = Field(min_length=2, max_length=50, description="Raca do gado")
     sexo: Literal["macho", "femea", "misto"] = Field(description="Sexo do lote")
@@ -21,11 +21,17 @@ class LoteExtraido(BaseModel):
         default=None, max_length=50, description="Cor da pelagem"
     )
     preco_lance: Decimal = Field(
-        ge=Decimal("100"), le=Decimal("100000"), description="Valor do lance em R$"
+        ge=Decimal("0"), le=Decimal("500000"), description="Valor do lance em R$"
     )
     local_cidade: str = Field(min_length=2, max_length=100, description="Cidade")
     local_estado: str = Field(
         min_length=2, max_length=2, description="Sigla do estado (UF)"
+    )
+    fazenda_vendedor: str | None = Field(
+        default=None, max_length=200, description="Nome da fazenda vendedora"
+    )
+    timestamp_video: datetime | None = Field(
+        default=None, description="Data/hora exata mostrada no overlay"
     )
     timestamp_frame: datetime = Field(description="Timestamp do frame no video")
     confianca: float = Field(
@@ -36,21 +42,26 @@ class LoteExtraido(BaseModel):
 class LoteConsolidado(BaseModel):
     """Lote consolidado a partir de multiplos frames."""
 
-    lote_numero: int
+    lote_numero: str
     quantidade: int
     raca: str
     sexo: Literal["macho", "femea", "misto"]
     idade_meses: int | None = None
     pelagem: str | None = None
-    preco_lance_inicial: Decimal
-    preco_arrematacao: Decimal | None = None
+    preco_inicial: Decimal
+    preco_final: Decimal
     preco_por_cabeca: Decimal | None = None
     local_cidade: str
     local_estado: str
+    fazenda_vendedor: str | None = None
     timestamp_inicio: datetime
     timestamp_fim: datetime | None = None
+    timestamp_video_inicio: datetime | None = None
+    timestamp_video_fim: datetime | None = None
     frames_analisados: int = Field(ge=1)
     confianca_media: float = Field(ge=0.0, le=1.0)
+    aparicoes: int = Field(default=1, ge=1, description="Vezes que o lote apareceu (2+ = repescagem)")
+    status: str = Field(default="incerto", description="arrematado | repescagem | incerto")
 
 
 class LeilaoInfo(BaseModel):
