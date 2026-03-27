@@ -2,6 +2,8 @@
 
 import json
 import logging
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
@@ -13,8 +15,8 @@ from leilao_inteligente.config import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Largura do overlay recortado enviado ao Gemini (420p)
 OVERLAY_WIDTH = 420
+MAX_PARALELO = 20
 
 PROMPT_EXTRACAO = """Extraia os dados do overlay deste leilão de gado brasileiro.
 
@@ -65,15 +67,7 @@ def _get_client() -> genai.Client:
 
 
 def _recortar_overlay(frame_path: Path, top_percent: int = 70) -> bytes:
-    """Recorta a regiao do overlay (inferior) e redimensiona pra 420p.
-
-    Args:
-        frame_path: Caminho do frame JPEG.
-        top_percent: Porcentagem do topo a remover (70 = manter 30% inferior).
-
-    Returns:
-        Bytes JPEG do overlay recortado e redimensionado.
-    """
+    """Recorta a regiao do overlay (inferior) e redimensiona pra 420p."""
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
@@ -82,7 +76,6 @@ def _recortar_overlay(frame_path: Path, top_percent: int = 70) -> bytes:
     top_cut = int(h * top_percent / 100)
     overlay = frame[top_cut:, :]
 
-    # Redimensionar pra 420p de largura mantendo proporcao
     oh, ow = overlay.shape[:2]
     new_w = OVERLAY_WIDTH
     new_h = int(oh * new_w / ow)
@@ -92,14 +85,9 @@ def _recortar_overlay(frame_path: Path, top_percent: int = 70) -> bytes:
     return buf.tobytes()
 
 
-def _chamar_gemini_com_retry(
-    client: genai.Client,
-    image_part: Part,
-    max_retries: int = 3,
-) -> object:
-    """Chama Gemini com retry automatico em caso de rate limit."""
-    import time
-
+def _chamar_gemini(client: genai.Client, image_part: Part) -> object:
+    """Chama Gemini com retry em rate limit e timeout."""
+    max_retries = 3
     for tentativa in range(max_retries):
         try:
             return client.models.generate_content(
@@ -112,56 +100,23 @@ def _chamar_gemini_com_retry(
                 ),
             )
         except Exception as e:
-            if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+            err = str(e)
+            if "429" in err or "RESOURCE_EXHAUSTED" in err:
                 espera = 15 * (tentativa + 1)
-                logger.info(
-                    "Rate limit atingido, aguardando %ds (tentativa %d/%d)",
-                    espera, tentativa + 1, max_retries,
-                )
+                logger.info("Rate limit, aguardando %ds (%d/%d)", espera, tentativa + 1, max_retries)
                 time.sleep(espera)
-            elif "ReadTimeout" in str(type(e).__name__) or "timed out" in str(e):
-                espera = 10 * (tentativa + 1)
-                logger.info(
-                    "Timeout, aguardando %ds (tentativa %d/%d)",
-                    espera, tentativa + 1, max_retries,
-                )
+            elif "timed out" in err.lower() or "ReadTimeout" in type(e).__name__:
+                espera = 5 * (tentativa + 1)
+                logger.info("Timeout, aguardando %ds (%d/%d)", espera, tentativa + 1, max_retries)
                 time.sleep(espera)
             else:
                 raise
     raise RuntimeError("Gemini falhou apos todas as tentativas")
 
 
-def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
-    """Recorta overlay do frame, envia ao Gemini e extrai dados estruturados.
-
-    Envia apenas o overlay recortado em 420p (3x mais barato que frame completo).
-    O frame completo e mantido no disco pra visualizacao no dashboard.
-
-    Args:
-        frame_path: Caminho do frame JPEG.
-
-    Returns:
-        Dict com dados extraidos ou None se falhar.
-    """
-    if not frame_path.exists():
-        raise FileNotFoundError(f"Frame nao encontrado: {frame_path}")
-
-    client = _get_client()
-
-    try:
-        overlay_bytes = _recortar_overlay(frame_path)
-        image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
-        response = _chamar_gemini_com_retry(client, image_part)
-    except Exception:
-        logger.exception("Erro ao chamar Gemini para: %s", frame_path.name)
-        return None
-
-    if not response.text:
-        logger.warning("Resposta vazia do Gemini para: %s", frame_path.name)
-        return None
-
-    texto = response.text.strip()
-    # Remove markdown code blocks se Gemini retornar com ```json
+def _parse_response(texto: str) -> dict[str, object] | None:
+    """Parseia resposta JSON do Gemini."""
+    texto = texto.strip()
     if texto.startswith("```"):
         texto = texto.split("\n", 1)[1] if "\n" in texto else texto
         if texto.endswith("```"):
@@ -171,14 +126,78 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
     try:
         dados = json.loads(texto)
     except json.JSONDecodeError:
-        logger.warning(
-            "Resposta invalida do Gemini para %s: %s", frame_path.name, texto[:200]
-        )
         return None
 
     if "erro" in dados:
-        logger.info("Frame nao e leilao: %s (%s)", frame_path.name, dados["erro"])
         return None
 
-    logger.debug("Dados extraidos de %s: lote %s", frame_path.name, dados.get("lote_numero"))
     return dados
+
+
+def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
+    """Recorta overlay 420p, envia ao Gemini e extrai dados estruturados."""
+    if not frame_path.exists():
+        raise FileNotFoundError(f"Frame nao encontrado: {frame_path}")
+
+    client = _get_client()
+
+    try:
+        overlay_bytes = _recortar_overlay(frame_path)
+        image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
+        response = _chamar_gemini(client, image_part)
+    except Exception:
+        logger.exception("Erro ao chamar Gemini para: %s", frame_path.name)
+        return None
+
+    if not response.text:
+        return None
+
+    dados = _parse_response(response.text)
+    if dados:
+        logger.debug("Extraido de %s: lote %s", frame_path.name, dados.get("lote_numero"))
+    return dados
+
+
+def extrair_dados_lote(
+    frames: list[Path],
+    callback: object = None,
+) -> list[tuple[Path, dict[str, object]]]:
+    """Extrai dados de multiplos frames em paralelo.
+
+    Args:
+        frames: Lista de caminhos de frames.
+        callback: Funcao chamada apos cada frame (pra progress bar).
+
+    Returns:
+        Lista de tuplas (frame_path, dados_extraidos) para frames validos.
+    """
+    client = _get_client()
+    resultados: list[tuple[Path, dict[str, object]]] = []
+
+    def _processar_frame(frame_path: Path) -> tuple[Path, dict[str, object] | None]:
+        try:
+            overlay_bytes = _recortar_overlay(frame_path)
+            image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
+            response = _chamar_gemini(client, image_part)
+            if response.text:
+                dados = _parse_response(response.text)
+                return (frame_path, dados)
+            return (frame_path, None)
+        except Exception:
+            logger.debug("Erro em %s", frame_path.name)
+            return (frame_path, None)
+
+    with ThreadPoolExecutor(max_workers=MAX_PARALELO) as executor:
+        futures = {
+            executor.submit(_processar_frame, fp): fp
+            for fp in frames
+        }
+
+        for future in as_completed(futures):
+            frame_path, dados = future.result()
+            if dados is not None:
+                resultados.append((frame_path, dados))
+            if callback:
+                callback()
+
+    return resultados

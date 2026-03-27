@@ -15,7 +15,7 @@ from leilao_inteligente.pipeline.change_detector import filtrar_frames_relevante
 from leilao_inteligente.pipeline.downloader import baixar_video, extrair_video_id
 from leilao_inteligente.pipeline.frame_extractor import extrair_frames, frame_timestamp
 from leilao_inteligente.pipeline.validator import validar_lote
-from leilao_inteligente.pipeline.vision import extrair_dados_frame
+from leilao_inteligente.pipeline.vision import extrair_dados_lote
 
 
 logger = logging.getLogger(__name__)
@@ -234,25 +234,27 @@ def processar_video(url: str) -> list[LoteConsolidado]:
             description=f"Relevantes: {len(frames_relevantes)} de {len(frames)}"
         )
 
-        # 4. Extrair dados via Gemini (envia overlay recortado 420p)
+        # 4. Extrair dados via Gemini (overlay 420p, 20 requests paralelos)
         task = progress.add_task(
             "Extraindo dados via Gemini...", total=len(frames_relevantes)
         )
-        lotes_com_frame: list[LoteComFrame] = []
 
-        for frame_path in frames_relevantes:
-            dados = extrair_dados_frame(frame_path)
-            if dados is not None:
-                ts_segundos = frame_timestamp(
-                    frame_path, settings.frame_interval_seconds
-                )
-                ts = datetime.now(tz=timezone.utc) + timedelta(seconds=ts_segundos)
-
-                lote = validar_lote(dados, timestamp_frame=ts)
-                if lote is not None:
-                    lotes_com_frame.append(LoteComFrame(lote, frame_path))
-
+        def _on_frame_done() -> None:
             progress.advance(task)
+
+        resultados_gemini = extrair_dados_lote(
+            frames_relevantes, callback=_on_frame_done
+        )
+
+        lotes_com_frame: list[LoteComFrame] = []
+        for frame_path, dados in resultados_gemini:
+            ts_segundos = frame_timestamp(
+                frame_path, settings.frame_interval_seconds
+            )
+            ts = datetime.now(tz=timezone.utc) + timedelta(seconds=ts_segundos)
+            lote = validar_lote(dados, timestamp_frame=ts)
+            if lote is not None:
+                lotes_com_frame.append(LoteComFrame(lote, frame_path))
 
         progress.update(
             task, description=f"Extraidos {len(lotes_com_frame)} registros validos"
