@@ -70,6 +70,67 @@ def extrair_frames(
     return frames
 
 
+def extrair_frames_janela(
+    video_path: Path,
+    inicio_segundos: float,
+    fim_segundos: float,
+    output_dir: Path,
+    intervalo_segundos: int = 1,
+) -> list[Path]:
+    """Extrai frames de uma janela especifica do video.
+
+    Usado na passada 2 pra refinar lotes com poucos frames.
+
+    Args:
+        video_path: Caminho do video.
+        inicio_segundos: Segundo inicial da janela.
+        fim_segundos: Segundo final da janela.
+        output_dir: Diretorio de saida.
+        intervalo_segundos: Intervalo entre frames (padrao 1s).
+
+    Returns:
+        Lista de Paths dos frames extraidos.
+    """
+    if not video_path.exists():
+        raise FileNotFoundError(f"Video nao encontrado: {video_path}")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    duracao = fim_segundos - inicio_segundos
+    if duracao <= 0:
+        return []
+
+    # Prefixo unico pra nao colidir com frames da passada 1
+    prefix = f"refine_{int(inicio_segundos)}"
+    output_pattern = str(output_dir / f"{prefix}_%04d.jpg")
+
+    cmd = [
+        "ffmpeg",
+        "-ss", str(inicio_segundos),
+        "-i", str(video_path),
+        "-t", str(duracao),
+        "-vf", f"fps=1/{intervalo_segundos}",
+        "-q:v", "2",
+        "-y",
+        output_pattern,
+    ]
+
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=False,
+    )
+
+    if result.returncode != 0:
+        logger.warning("ffmpeg falhou na janela %d-%ds: %s", inicio_segundos, fim_segundos, result.stderr[:200])
+        return []
+
+    frames = sorted(output_dir.glob(f"{prefix}_*.jpg"))
+    logger.info(
+        "Janela %d-%ds: extraidos %d frames a cada %ds",
+        inicio_segundos, fim_segundos, len(frames), intervalo_segundos,
+    )
+    return frames
+
+
 def frame_timestamp(frame_path: Path, intervalo_segundos: int = 15) -> float:
     """Calcula o timestamp (em segundos) de um frame pelo seu nome.
 

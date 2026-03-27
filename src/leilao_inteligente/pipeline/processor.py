@@ -13,7 +13,7 @@ from leilao_inteligente.config import get_settings, DATA_DIR
 from leilao_inteligente.models.schemas import LoteConsolidado, LoteExtraido
 from leilao_inteligente.pipeline.change_detector import filtrar_frames_relevantes
 from leilao_inteligente.pipeline.downloader import baixar_video, extrair_video_id
-from leilao_inteligente.pipeline.frame_extractor import extrair_frames, frame_timestamp
+from leilao_inteligente.pipeline.frame_extractor import extrair_frames, extrair_frames_janela, frame_timestamp
 from leilao_inteligente.pipeline.validator import validar_lote
 from leilao_inteligente.pipeline.vision import extrair_dados_lote
 
@@ -344,15 +344,148 @@ def processar_video(url: str) -> list[LoteConsolidado]:
             task, description=f"Extraidos {len(lotes_com_frame)} registros validos"
         )
 
-    # 5. Consolidar lotes + salvar frames visuais
+    # 5. Consolidar lotes (passada 1)
     consolidados = consolidar_lotes(lotes_com_frame, video_id=video_id)
 
     logger.info(
-        "Pipeline completo: %d frames → %d relevantes → %d registros → %d lotes",
+        "Passada 1: %d frames → %d relevantes → %d registros → %d lotes",
         len(frames),
         len(frames_relevantes),
         len(lotes_com_frame),
         len(consolidados),
     )
 
+    # 6. Passada 2: refinar lotes com poucos frames (< 4 com preco)
+    lotes_refinar = _identificar_lotes_pra_refinar(lotes_com_frame, min_frames=4)
+
+    if lotes_refinar:
+        logger.info("Passada 2: refinando %d lotes com poucos frames", len(lotes_refinar))
+
+        novos_lcfs = _refinar_lotes(
+            video_path, lotes_refinar, lotes_com_frame, settings.frame_interval_seconds
+        )
+
+        if novos_lcfs:
+            # Juntar com os originais e reconsolidar
+            lotes_com_frame.extend(novos_lcfs)
+            consolidados = consolidar_lotes(lotes_com_frame, video_id=video_id)
+
+            logger.info(
+                "Passada 2: +%d frames → %d lotes finais",
+                len(novos_lcfs), len(consolidados),
+            )
+
     return consolidados
+
+
+# Minimo de frames com preco pra considerar lote bem coberto
+MIN_FRAMES_BEM_COBERTO = 4
+
+
+def _identificar_lotes_pra_refinar(
+    lotes_com_frame: list[LoteComFrame],
+    min_frames: int = MIN_FRAMES_BEM_COBERTO,
+) -> dict[str, tuple[float, float]]:
+    """Identifica lotes com poucos frames e suas janelas de tempo no video.
+
+    Returns:
+        Dict de lote_numero → (inicio_segundos, fim_segundos) no video.
+    """
+    from leilao_inteligente.pipeline.frame_extractor import frame_timestamp
+
+    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+    for lcf in lotes_com_frame:
+        por_lote[lcf.lote.lote_numero].append(lcf)
+
+    refinar: dict[str, tuple[float, float]] = {}
+
+    for numero, frames in por_lote.items():
+        frames_com_preco = [f for f in frames if f.lote.preco_lance > 0]
+
+        if len(frames_com_preco) >= min_frames:
+            continue  # Ja tem frames suficientes
+
+        if not frames:
+            continue
+
+        # Calcular janela de tempo no video (com margem de 15s antes e depois)
+        timestamps = []
+        for f in frames:
+            # Extrair timestamp do nome do frame
+            nome = f.frame_path.stem
+            try:
+                num = int(nome.split("_")[1])
+                ts = (num - 1) * 5  # intervalo de 5s da passada 1
+                timestamps.append(ts)
+            except (ValueError, IndexError):
+                continue
+
+        if not timestamps:
+            continue
+
+        # Janela centrada no ultimo timestamp (onde o lote ainda estava na tela)
+        # Margem de 5s antes e 10s depois (capturar arrematacao)
+        ultimo_ts = max(timestamps)
+        inicio = max(0, ultimo_ts - 5)
+        fim = ultimo_ts + 10
+
+        refinar[numero] = (inicio, fim)
+
+    return refinar
+
+
+def _refinar_lotes(
+    video_path: Path,
+    lotes_refinar: dict[str, tuple[float, float]],
+    lotes_existentes: list[LoteComFrame],
+    intervalo_original: int,
+) -> list[LoteComFrame]:
+    """Passada 2: extrai frames de 1s nas janelas dos lotes com poucos frames.
+
+    Envia ao Gemini e retorna novos LoteComFrame pra integrar.
+    """
+    from leilao_inteligente.config import FRAMES_DIR
+
+    video_name = video_path.stem
+    refine_dir = FRAMES_DIR / video_name / "refine"
+    refine_dir.mkdir(parents=True, exist_ok=True)
+
+    # Extrair frames de 1s pra cada janela
+    todos_frames: list[tuple[str, Path]] = []  # (lote_numero, frame_path)
+
+    for numero, (inicio, fim) in lotes_refinar.items():
+        frames = extrair_frames_janela(
+            video_path, inicio, fim, refine_dir, intervalo_segundos=1,
+        )
+        for fp in frames:
+            todos_frames.append((numero, fp))
+
+    if not todos_frames:
+        return []
+
+    logger.info("Passada 2: extraidos %d frames de %d lotes", len(todos_frames), len(lotes_refinar))
+
+    # Enviar ao Gemini em paralelo
+    frame_paths = [fp for _, fp in todos_frames]
+    resultados = extrair_dados_lote(frame_paths)
+
+    # Validar e criar LoteComFrame
+    novos: list[LoteComFrame] = []
+    for frame_path, dados in resultados:
+        # Calcular timestamp aproximado
+        nome = frame_path.stem  # "refine_1200_0003"
+        parts = nome.split("_")
+        try:
+            inicio_seg = int(parts[1])
+            frame_num = int(parts[2])
+            ts_seg = inicio_seg + (frame_num - 1)
+        except (ValueError, IndexError):
+            ts_seg = 0
+
+        ts = datetime.now(tz=timezone.utc) + timedelta(seconds=ts_seg)
+        lote = validar_lote(dados, timestamp_frame=ts)
+        if lote is not None:
+            novos.append(LoteComFrame(lote, frame_path))
+
+    logger.info("Passada 2: %d registros validos de %d frames", len(novos), len(frame_paths))
+    return novos
