@@ -26,7 +26,17 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     # Normalizar lote_numero para string
     lote = resultado.get("lote_numero")
     if lote is not None:
-        resultado["lote_numero"] = str(lote).strip()
+        lote_str = str(lote).strip()
+        # Corrigir leituras como ".0", "0.0" → "0"
+        if lote_str.replace(".", "").replace("0", "") == "":
+            lote_str = "0"
+        # Remover ponto decimal de numeros (ex: "5.0" → "5")
+        elif "." in lote_str:
+            try:
+                lote_str = str(int(float(lote_str)))
+            except ValueError:
+                pass
+        resultado["lote_numero"] = lote_str
 
     # Normalizar preco
     preco = resultado.get("preco_lance")

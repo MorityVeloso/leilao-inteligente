@@ -168,8 +168,92 @@ def consolidar_lotes(
         )
         consolidados.append(consolidado)
 
+    # Deduplicar lotes espelhados (1000 = 0001, etc)
+    consolidados = _dedup_lotes_espelhados(consolidados)
+
     logger.info("Consolidados %d lotes", len(consolidados))
     return consolidados
+
+
+def _dedup_lotes_espelhados(lotes: list[LoteConsolidado]) -> list[LoteConsolidado]:
+    """Remove lotes duplicados por espelhamento de numero.
+
+    O Gemini as vezes le "0001" como "1000" (inverte os digitos).
+    Detecta pares espelhados comparando:
+    - Numero invertido existe?
+    - Mesma raca, sexo, quantidade?
+    - Timestamps proximos (< 30 min)?
+
+    Quando encontra par, mantem o lote com mais frames analisados.
+    """
+    removidos: set[int] = set()
+    lotes_por_numero: dict[str, int] = {l.lote_numero: i for i, l in enumerate(lotes)}
+
+    for i, lote in enumerate(lotes):
+        if i in removidos:
+            continue
+
+        num = lote.lote_numero
+        # Tentar inversao: "1000" -> "0001"
+        invertido = num[::-1]
+
+        # Tambem tentar com padding: "430" -> "034" -> "0034"? Nao, manter simples
+        candidatos = [invertido]
+
+        # Se o numero e so digitos, tentar com zero-padding
+        if num.isdigit() and invertido.isdigit():
+            invertido_padded = invertido.lstrip("0").zfill(len(num))
+            if invertido_padded != invertido:
+                candidatos.append(invertido_padded)
+            # Tambem tentar com zeros a esquerda no invertido
+            invertido_zeros = invertido.zfill(4)
+            if invertido_zeros not in candidatos:
+                candidatos.append(invertido_zeros)
+
+        for cand in candidatos:
+            if cand == num or cand not in lotes_por_numero:
+                continue
+
+            j = lotes_por_numero[cand]
+            if j in removidos:
+                continue
+
+            outro = lotes[j]
+
+            # Verificar similaridade
+            mesma_raca = lote.raca.lower() == outro.raca.lower()
+            mesmo_sexo = lote.sexo == outro.sexo
+            mesma_qtd = lote.quantidade == outro.quantidade
+
+            # Timestamps proximos (< 30 min)
+            diff_tempo = abs(
+                (lote.timestamp_inicio - outro.timestamp_inicio).total_seconds()
+            )
+            tempo_proximo = diff_tempo < 30 * 60
+
+            # Precisa de pelo menos 2 criterios alem do numero invertido
+            score = sum([mesma_raca, mesmo_sexo, mesma_qtd, tempo_proximo])
+
+            if score >= 3:
+                # Manter o que tem mais frames ou maior confianca
+                if outro.frames_analisados > lote.frames_analisados:
+                    removidos.add(i)
+                    logger.info(
+                        "Lote espelhado: %s = %s (mantendo %s, %d frames vs %d)",
+                        num, cand, cand, outro.frames_analisados, lote.frames_analisados,
+                    )
+                else:
+                    removidos.add(j)
+                    logger.info(
+                        "Lote espelhado: %s = %s (mantendo %s, %d frames vs %d)",
+                        cand, num, num, lote.frames_analisados, outro.frames_analisados,
+                    )
+                break
+
+    resultado = [l for i, l in enumerate(lotes) if i not in removidos]
+    if removidos:
+        logger.info("Removidos %d lotes espelhados", len(removidos))
+    return resultado
 
 
 def _contar_aparicoes(frames: list[LoteExtraido]) -> int:
