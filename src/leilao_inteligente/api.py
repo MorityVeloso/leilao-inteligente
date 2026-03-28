@@ -200,20 +200,9 @@ def _lote_to_dict(lote: Lote, session) -> dict:
     youtube_url = None
     if leilao and leilao.url_video:
         video_id = _extrair_video_id(leilao.url_video)
-        if video_id and lote.timestamp_video_inicio:
-            # Usar so hora/minuto/segundo (ignorar data que Gemini erra)
-            h = lote.timestamp_video_inicio.hour
-            m = lote.timestamp_video_inicio.minute
-            s = lote.timestamp_video_inicio.second
-            # Estimar inicio do leilao como 20:00 (padrao)
-            segundo_do_dia = h * 3600 + m * 60 + s
-            inicio_leilao = 20 * 3600  # 20:00 = 72000s
-            offset = segundo_do_dia - inicio_leilao
-            if offset < 0:
-                offset += 24 * 3600  # passou da meia-noite
-            if 0 <= offset < 36000:  # ate 10h de leilao
-                youtube_url = f"https://www.youtube.com/watch?v={video_id}&t={offset}s"
-        if not youtube_url and video_id:
+        if video_id and lote.segundo_video:
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}&t={lote.segundo_video}s"
+        elif video_id:
             youtube_url = f"https://www.youtube.com/watch?v={video_id}"
 
     return {

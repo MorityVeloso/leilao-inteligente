@@ -76,6 +76,7 @@ class Lote(Base):
     aparicoes: Mapped[int] = mapped_column(Integer, default=1)
     status: Mapped[str] = mapped_column(String(20), default="incerto")
     frame_paths: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    segundo_video: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     leilao: Mapped["Leilao"] = relationship(back_populates="lotes")
 
