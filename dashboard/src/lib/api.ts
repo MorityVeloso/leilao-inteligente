@@ -48,6 +48,7 @@ export interface Lote {
   aparicoes: number;
   confianca_media: number;
   frame_paths: string[];
+  youtube_url: string | null;
 }
 
 export interface FiltrosOpcoes {

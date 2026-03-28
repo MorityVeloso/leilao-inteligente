@@ -167,9 +167,55 @@ def get_lotes(
         session.close()
 
 
+def _extrair_video_id(url: str) -> str | None:
+    """Extrai video ID de uma URL do YouTube."""
+    import re
+    for pattern in [r"(?:v=|/v/|youtu\.be/)([a-zA-Z0-9_-]{11})", r"(?:/live/)([a-zA-Z0-9_-]{11})"]:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _calcular_segundo_video(lote: Lote) -> int | None:
+    """Calcula o segundo do video onde o lote aparece."""
+    if not lote.frame_paths:
+        return None
+    primeiro_frame = lote.frame_paths.split("|")[0] if lote.frame_paths else None
+    if not primeiro_frame:
+        return None
+    # Frame path: lote_frames/VIDEO_ID/LOTE/visual_1.jpg
+    # Ou do timestamp_inicio que e baseado no offset do video
+    # Usar timestamp_inicio - data base do processamento
+    # Melhor: extrair do nome do frame original se disponivel
+    # Por ora, estimar pelo frame_paths
+    return None
+
+
 def _lote_to_dict(lote: Lote, session) -> dict:
     """Converte Lote pra dict serializavel."""
     leilao = session.query(Leilao).filter(Leilao.id == lote.leilao_id).first()
+
+    # Montar URL do YouTube com timestamp
+    youtube_url = None
+    if leilao and leilao.url_video:
+        video_id = _extrair_video_id(leilao.url_video)
+        if video_id and lote.timestamp_video_inicio:
+            # Usar so hora/minuto/segundo (ignorar data que Gemini erra)
+            h = lote.timestamp_video_inicio.hour
+            m = lote.timestamp_video_inicio.minute
+            s = lote.timestamp_video_inicio.second
+            # Estimar inicio do leilao como 20:00 (padrao)
+            segundo_do_dia = h * 3600 + m * 60 + s
+            inicio_leilao = 20 * 3600  # 20:00 = 72000s
+            offset = segundo_do_dia - inicio_leilao
+            if offset < 0:
+                offset += 24 * 3600  # passou da meia-noite
+            if 0 <= offset < 36000:  # ate 10h de leilao
+                youtube_url = f"https://www.youtube.com/watch?v={video_id}&t={offset}s"
+        if not youtube_url and video_id:
+            youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+
     return {
         "id": lote.id,
         "leilao_id": lote.leilao_id,
@@ -192,6 +238,7 @@ def _lote_to_dict(lote: Lote, session) -> dict:
         "aparicoes": lote.aparicoes,
         "confianca_media": lote.confianca_media,
         "frame_paths": lote.frame_paths.split("|") if lote.frame_paths else [],
+        "youtube_url": youtube_url,
     }
 
 

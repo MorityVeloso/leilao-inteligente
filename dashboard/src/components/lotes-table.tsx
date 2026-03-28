@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Camera, ChevronDown, ChevronRight, ChevronLeft, X } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Youtube } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -115,9 +115,22 @@ export function LotesTable({ filtros }: LotesTableProps) {
                       <TableCell className="text-right whitespace-nowrap font-semibold">{formatBRL(lote.preco_final)}</TableCell>
                       <TableCell>{statusBadge(lote.status)}</TableCell>
                       <TableCell>
-                        {lote.frame_paths.length > 0 && (
-                          <Camera className="h-4 w-4 text-muted-foreground" />
-                        )}
+                        <div className="flex gap-1.5">
+                          {lote.frame_paths.length > 0 && (
+                            <Camera className="h-4 w-4 text-muted-foreground" />
+                          )}
+                          {lote.youtube_url && (
+                            <a
+                              href={lote.youtube_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Ver no YouTube"
+                            >
+                              <Youtube className="h-4 w-4 text-red-500 hover:text-red-400" />
+                            </a>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
 
