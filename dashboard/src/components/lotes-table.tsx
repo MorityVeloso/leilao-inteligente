@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Youtube } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
+import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -83,7 +83,7 @@ export function LotesTable({ filtros }: LotesTableProps) {
               </TableHeader>
               <TableBody>
                 {lotes.map((lote) => (
-                  <>
+                  <Fragment key={lote.id}>
                     <TableRow
                       key={lote.id}
                       className="cursor-pointer hover:bg-muted/50"
@@ -127,7 +127,7 @@ export function LotesTable({ filtros }: LotesTableProps) {
                               onClick={(e) => e.stopPropagation()}
                               title="Ver no YouTube"
                             >
-                              <Youtube className="h-4 w-4 text-red-500 hover:text-red-400" />
+                              <Play className="h-4 w-4 text-red-500 hover:text-red-400 fill-red-500" />
                             </a>
                           )}
                         </div>
@@ -154,7 +154,7 @@ export function LotesTable({ filtros }: LotesTableProps) {
                         </TableCell>
                       </TableRow>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </TableBody>
             </Table>

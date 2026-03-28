@@ -414,9 +414,12 @@ def get_regioes(
             func.count(Lote.id).label("lotes"),
         ).join(Leilao)
 
-        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, dias=dias)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max)
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(Leilao.local_estado.isnot(None))
+        if dias:
+            desde = datetime.utcnow() - timedelta(days=dias)
+            q = q.filter(Leilao.processado_em >= desde)
         q = q.group_by(Leilao.local_estado)
         q = q.order_by(func.count(Lote.id).desc())
 
