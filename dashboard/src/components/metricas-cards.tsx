@@ -21,7 +21,7 @@ export function MetricasCards({ filtros }: MetricasCardsProps) {
 
   if (!data) {
     return (
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         {[1, 2, 3, 4].map((i) => (
           <Card key={i} className="animate-pulse">
             <CardHeader className="pb-2"><div className="h-4 bg-muted rounded w-20" /></CardHeader>
@@ -35,7 +35,7 @@ export function MetricasCards({ filtros }: MetricasCardsProps) {
   const tendencia = data.tendencia_percentual;
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 gap-3">
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">Média</CardTitle>

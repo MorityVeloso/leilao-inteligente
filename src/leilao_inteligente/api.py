@@ -48,11 +48,17 @@ def get_filtros():
             if f[0]
         ]
 
+        leiloes_list = [
+            {"id": l.id, "titulo": l.titulo}
+            for l in session.query(Leilao).order_by(Leilao.processado_em.desc()).all()
+        ]
+
         return {
             "racas": racas,
             "sexos": sexos,
             "estados": estados,
             "fazendas": fazendas,
+            "leiloes": leiloes_list,
             "faixas_idade": [
                 {"label": "1-8m", "min": 1, "max": 8},
                 {"label": "10-14m", "min": 10, "max": 14},
@@ -68,8 +74,15 @@ def get_filtros():
 # --- Lotes com filtros ---
 
 
-def _aplicar_filtros(query, raca, sexo, idade_min, idade_max, estado, fazenda, dias):
+def _aplicar_filtros(
+    query, raca=None, sexo=None, idade_min=None, idade_max=None,
+    estado=None, fazenda=None, dias=None, status=None,
+    preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
+    leilao_id=None,
+):
     """Aplica filtros ao query de lotes."""
+    joined_leilao = False
+
     if raca:
         query = query.filter(Lote.raca == raca)
     if sexo:
@@ -78,16 +91,30 @@ def _aplicar_filtros(query, raca, sexo, idade_min, idade_max, estado, fazenda, d
         query = query.filter(Lote.idade_meses >= idade_min)
     if idade_max is not None:
         query = query.filter(Lote.idade_meses <= idade_max)
-    if estado:
-        query = query.join(Leilao, isouter=True).filter(Leilao.local_estado == estado)
+    if status:
+        query = query.filter(Lote.status == status)
+    if preco_min is not None:
+        query = query.filter(Lote.preco_final >= preco_min)
+    if preco_max is not None:
+        query = query.filter(Lote.preco_final <= preco_max)
+    if qtd_min is not None:
+        query = query.filter(Lote.quantidade >= qtd_min)
+    if qtd_max is not None:
+        query = query.filter(Lote.quantidade <= qtd_max)
     if fazenda:
         query = query.filter(Lote.fazenda_vendedor == fazenda)
+    if leilao_id is not None:
+        query = query.filter(Lote.leilao_id == leilao_id)
+    if estado:
+        query = query.join(Leilao, isouter=True)
+        joined_leilao = True
+        query = query.filter(Leilao.local_estado == estado)
     if dias:
         desde = datetime.utcnow() - timedelta(days=dias)
-        if estado:
-            query = query.filter(Leilao.processado_em >= desde)
-        else:
-            query = query.join(Leilao, isouter=True).filter(Leilao.processado_em >= desde)
+        if not joined_leilao:
+            query = query.join(Leilao, isouter=True)
+            joined_leilao = True
+        query = query.filter(Leilao.processado_em >= desde)
     return query
 
 
@@ -100,7 +127,13 @@ def get_lotes(
     estado: str | None = None,
     fazenda: str | None = None,
     dias: int | None = None,
+    status: str | None = None,
+    preco_min: float | None = None,
+    preco_max: float | None = None,
+    qtd_min: int | None = None,
+    qtd_max: int | None = None,
     leilao_id: int | None = None,
+    ordenar: str | None = None,
     limite: int = Query(default=200, le=1000),
 ):
     """Retorna lotes filtrados."""
@@ -108,12 +141,24 @@ def get_lotes(
     try:
         q = session.query(Lote)
 
-        if leilao_id:
-            q = q.filter(Lote.leilao_id == leilao_id)
-
-        q = _aplicar_filtros(q, raca, sexo, idade_min, idade_max, estado, fazenda, dias)
+        q = _aplicar_filtros(
+            q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
+            estado=estado, fazenda=fazenda, dias=dias, status=status,
+            preco_min=preco_min, preco_max=preco_max, qtd_min=qtd_min, qtd_max=qtd_max,
+            leilao_id=leilao_id,
+        )
         q = q.filter(Lote.preco_final > 0)
-        q = q.order_by(Lote.timestamp_inicio.desc())
+
+        # Ordenacao
+        if ordenar == "preco_asc":
+            q = q.order_by(Lote.preco_final.asc())
+        elif ordenar == "preco_desc":
+            q = q.order_by(Lote.preco_final.desc())
+        elif ordenar == "qtd_desc":
+            q = q.order_by(Lote.quantidade.desc())
+        else:
+            q = q.order_by(Lote.timestamp_inicio.desc())
+
         q = q.limit(limite)
 
         lotes = q.all()
@@ -174,7 +219,7 @@ def get_metricas(
             func.sum(Lote.quantidade).label("total_cabecas"),
         )
 
-        q = _aplicar_filtros(q, raca, sexo, idade_min, idade_max, estado, fazenda, dias)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, dias=dias)
         q = q.filter(Lote.preco_final > 0)
 
         result = q.one()
@@ -187,7 +232,7 @@ def get_metricas(
 
             q_recente = session.query(func.avg(Lote.preco_final))
             q_recente = q_recente.join(Leilao).filter(Leilao.processado_em >= meio)
-            q_recente = _aplicar_filtros(q_recente, raca, sexo, idade_min, idade_max, estado, fazenda, None)
+            q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
             q_recente = q_recente.filter(Lote.preco_final > 0)
             media_recente = q_recente.scalar()
 
@@ -196,7 +241,7 @@ def get_metricas(
                 Leilao.processado_em >= desde,
                 Leilao.processado_em < meio,
             )
-            q_antigo = _aplicar_filtros(q_antigo, raca, sexo, idade_min, idade_max, estado, fazenda, None)
+            q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
             q_antigo = q_antigo.filter(Lote.preco_final > 0)
             media_antiga = q_antigo.scalar()
 
@@ -239,7 +284,7 @@ def get_tendencia(
             func.count(Lote.id).label("lotes"),
         ).join(Leilao)
 
-        q = _aplicar_filtros(q, raca, sexo, idade_min, idade_max, estado, None, None)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado)
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(Leilao.processado_em >= desde)
         q = q.group_by(Leilao.id)
@@ -282,7 +327,7 @@ def get_fazendas(
             func.sum(Lote.quantidade).label("cabecas"),
         )
 
-        q = _aplicar_filtros(q, raca, sexo, idade_min, idade_max, estado, None, dias)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, dias=dias)
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(Lote.fazenda_vendedor.isnot(None))
         q = q.group_by(Lote.fazenda_vendedor)
@@ -322,7 +367,7 @@ def get_regioes(
             func.count(Lote.id).label("lotes"),
         ).join(Leilao)
 
-        q = _aplicar_filtros(q, raca, sexo, idade_min, idade_max, None, None, dias)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, dias=dias)
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(Leilao.local_estado.isnot(None))
         q = q.group_by(Leilao.local_estado)

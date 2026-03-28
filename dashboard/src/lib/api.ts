@@ -8,6 +8,13 @@ export interface Filtros {
   estado?: string;
   fazenda?: string;
   dias?: number;
+  status?: string;
+  preco_min?: number;
+  preco_max?: number;
+  qtd_min?: number;
+  qtd_max?: number;
+  leilao_id?: number;
+  ordenar?: string;
 }
 
 export interface Metricas {
@@ -48,6 +55,7 @@ export interface FiltrosOpcoes {
   sexos: string[];
   estados: string[];
   fazendas: string[];
+  leiloes: { id: number; titulo: string }[];
   faixas_idade: { label: string; min: number; max: number }[];
 }
 
@@ -80,6 +88,13 @@ function buildParams(filtros: Filtros): URLSearchParams {
   if (filtros.estado) params.set("estado", filtros.estado);
   if (filtros.fazenda) params.set("fazenda", filtros.fazenda);
   if (filtros.dias) params.set("dias", String(filtros.dias));
+  if (filtros.status) params.set("status", filtros.status);
+  if (filtros.preco_min !== undefined) params.set("preco_min", String(filtros.preco_min));
+  if (filtros.preco_max !== undefined) params.set("preco_max", String(filtros.preco_max));
+  if (filtros.qtd_min !== undefined) params.set("qtd_min", String(filtros.qtd_min));
+  if (filtros.qtd_max !== undefined) params.set("qtd_max", String(filtros.qtd_max));
+  if (filtros.leilao_id !== undefined) params.set("leilao_id", String(filtros.leilao_id));
+  if (filtros.ordenar) params.set("ordenar", filtros.ordenar);
   return params;
 }
 
