@@ -30,9 +30,10 @@ function statusBadge(status: string) {
 
 interface LotesTableProps {
   filtros: Filtros;
+  onPlayVideo?: (url: string, lote: string) => void;
 }
 
-export function LotesTable({ filtros }: LotesTableProps) {
+export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [expandido, setExpandido] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -120,15 +121,19 @@ export function LotesTable({ filtros }: LotesTableProps) {
                             <Camera className="h-4 w-4 text-muted-foreground" />
                           )}
                           {lote.youtube_url && (
-                            <a
-                              href={lote.youtube_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onPlayVideo) {
+                                  onPlayVideo(lote.youtube_url!, lote.lote_numero);
+                                } else {
+                                  window.open(lote.youtube_url!, "_blank");
+                                }
+                              }}
                               title="Ver no YouTube"
                             >
                               <Play className="h-4 w-4 text-red-500 hover:text-red-400 fill-red-500" />
-                            </a>
+                            </button>
                           )}
                         </div>
                       </TableCell>
@@ -161,6 +166,33 @@ export function LotesTable({ filtros }: LotesTableProps) {
           </div>
         )}
       </CardContent>
+
+      {/* Video player embutido */}
+      {video && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
+          onClick={() => setVideo(null)}
+        >
+          <button
+            className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 rounded-full p-2 transition-colors z-10"
+            onClick={() => setVideo(null)}
+          >
+            <X className="h-6 w-6 text-white" />
+          </button>
+
+          <div className="w-[75vw] max-w-[1200px]" onClick={(e) => e.stopPropagation()}>
+            <iframe
+              src={video.url.replace("watch?v=", "embed/").replace("&t=", "?start=").replace("s", "")}
+              className="w-full aspect-video rounded-lg"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+            <div className="text-center mt-3 text-white text-sm">
+              Lote {video.lote}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Lightbox fullscreen */}
       {lightbox && (

@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { X } from "lucide-react";
 import { FiltroBar } from "@/components/filtro-bar";
 import { MetricasCards } from "@/components/metricas-cards";
 import { TendenciaChart } from "@/components/tendencia-chart";
@@ -5,8 +7,16 @@ import { LotesTable } from "@/components/lotes-table";
 import { Paineis } from "@/components/paineis";
 import { useFiltros } from "@/hooks/use-filtros";
 
+function youtubeEmbedUrl(watchUrl: string): string {
+  return watchUrl
+    .replace("watch?v=", "embed/")
+    .replace("&t=", "?start=")
+    .replace(/s$/, "");
+}
+
 export function DashboardPage() {
   const { filtros, setFiltro, setFaixaIdade, setFaixaPreco, setFaixaQtd, limpar, tags } = useFiltros();
+  const [video, setVideo] = useState<{ url: string; lote: string } | null>(null);
 
   return (
     <div className="space-y-4">
@@ -30,11 +40,28 @@ export function DashboardPage() {
       <div className="flex gap-4">
         {/* Esquerda: Tabela de lotes (maior) */}
         <div className="w-[58%] min-w-0">
-          <LotesTable filtros={filtros} />
+          <LotesTable filtros={filtros} onPlayVideo={(url, lote) => setVideo({ url, lote })} />
         </div>
 
-        {/* Direita: Cards + Tendencia + Paineis */}
+        {/* Direita: Video + Cards + Tendencia + Paineis */}
         <div className="w-[42%] min-w-0 space-y-4">
+          {video && (
+            <div className="rounded-lg border overflow-hidden bg-black">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">
+                <span className="text-xs font-medium">Lote {video.lote}</span>
+                <button onClick={() => setVideo(null)} className="hover:bg-muted rounded p-0.5">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <iframe
+                src={youtubeEmbedUrl(video.url)}
+                className="w-full aspect-video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          )}
+
           <MetricasCards filtros={filtros} />
           <TendenciaChart filtros={filtros} />
           <Paineis filtros={filtros} />
