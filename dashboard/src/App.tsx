@@ -1,39 +1,26 @@
-import { FiltroBar } from "@/components/filtro-bar";
-import { MetricasCards } from "@/components/metricas-cards";
-import { TendenciaChart } from "@/components/tendencia-chart";
-import { LotesTable } from "@/components/lotes-table";
-import { Paineis } from "@/components/paineis";
-import { useFiltros } from "@/hooks/use-filtros";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Layout } from "@/components/layout";
+import { DashboardPage } from "@/pages/dashboard";
+import { LeiloesPage } from "@/pages/leiloes";
+import { AnalisePage } from "@/pages/analise";
+import { AoVivoPage } from "@/pages/ao-vivo";
+import { ConfigPage } from "@/pages/config";
 
 export default function App() {
-  const { filtros, setFiltro, setFaixaIdade, limpar, tags } = useFiltros();
-
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leilao Inteligente</h1>
-          <p className="text-sm text-muted-foreground">
-            Analise de precos de gado em leiloes
-          </p>
-        </div>
-
-        <FiltroBar
-          filtros={filtros}
-          setFiltro={setFiltro}
-          setFaixaIdade={setFaixaIdade}
-          limpar={limpar}
-          tags={tags}
-        />
-
-        <MetricasCards filtros={filtros} />
-
-        <TendenciaChart filtros={filtros} />
-
-        <Paineis filtros={filtros} />
-
-        <LotesTable filtros={filtros} />
-      </div>
-    </div>
+    <TooltipProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/leiloes" element={<LeiloesPage />} />
+            <Route path="/analise" element={<AnalisePage />} />
+            <Route path="/ao-vivo" element={<AoVivoPage />} />
+            <Route path="/config" element={<ConfigPage />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </TooltipProvider>
   );
 }
