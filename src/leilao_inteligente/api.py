@@ -174,7 +174,7 @@ def _lote_to_dict(lote: Lote, session) -> dict:
         "id": lote.id,
         "leilao_id": lote.leilao_id,
         "leilao_titulo": leilao.titulo if leilao else None,
-        "leilao_data": leilao.processado_em.isoformat() if leilao and leilao.processado_em else None,
+        "leilao_data": (leilao.data_leilao or leilao.processado_em).isoformat() if leilao else None,
         "lote_numero": lote.lote_numero,
         "quantidade": lote.quantidade,
         "raca": lote.raca,

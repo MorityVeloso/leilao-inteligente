@@ -11,6 +11,17 @@ import {
 } from "@/components/ui/select";
 import { api, type FiltrosOpcoes, type Filtros } from "@/lib/api";
 
+function limparTituloLeilao(titulo: string): string {
+  return titulo
+    .replace(/LEIL[ÃA]O\s*/gi, "")
+    .replace(/\bLIVE\b/gi, "")
+    .replace(/\bLEILOEIRO\b/gi, "")
+    .replace(/\d{2}\/\d{2}\/\d{4}/g, "")
+    .replace(/\b(JENILSON|ROCHA)\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
 interface FiltroBarProps {
   filtros: Filtros;
   setFiltro: <K extends keyof Filtros>(key: K, value: Filtros[K]) => void;
@@ -32,8 +43,8 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
   return (
     <div className="space-y-2">
-      {/* Linha 1: filtros principais */}
-      <div className="flex flex-wrap gap-2">
+      {/* Filtros em linha unica com scroll */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
         <Select
           value={filtros.raca ?? ""}
           onValueChange={(v) => setFiltro("raca", v === "todas" ? undefined : v)}
@@ -131,10 +142,6 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             ))}
           </SelectContent>
         </Select>
-      </div>
-
-      {/* Linha 2: filtros avancados */}
-      <div className="flex flex-wrap gap-2">
         <Select
           value={filtros.status ?? ""}
           onValueChange={(v) => setFiltro("status", v === "todos" ? undefined : v)}
@@ -202,14 +209,14 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             value={filtros.leilao_id !== undefined ? String(filtros.leilao_id) : ""}
             onValueChange={(v) => setFiltro("leilao_id", v === "todos" ? undefined : Number(v))}
           >
-            <SelectTrigger className="w-[200px] h-8 text-xs">
+            <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue placeholder="Leilao" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent position="popper" side="bottom" align="start" className="min-w-[350px]">
               <SelectItem value="todos">Todos leiloes</SelectItem>
               {opcoes.leiloes.map((l) => (
-                <SelectItem key={l.id} value={String(l.id)}>
-                  {l.titulo.length > 35 ? l.titulo.slice(0, 35) + "..." : l.titulo}
+                <SelectItem key={l.id} value={String(l.id)} className="text-xs">
+                  {limparTituloLeilao(l.titulo)}
                 </SelectItem>
               ))}
             </SelectContent>

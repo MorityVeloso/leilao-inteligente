@@ -97,11 +97,9 @@ export function LotesTable({ filtros }: LotesTableProps) {
                         )}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {lote.timestamp_video_inicio
-                          ? new Date(lote.timestamp_video_inicio).toLocaleDateString("pt-BR")
-                          : lote.leilao_data
-                            ? new Date(lote.leilao_data).toLocaleDateString("pt-BR")
-                            : "—"}
+                        {lote.leilao_data
+                          ? new Date(lote.leilao_data).toLocaleDateString("pt-BR")
+                          : "—"}
                       </TableCell>
                       <TableCell className="font-mono font-bold">{lote.lote_numero}</TableCell>
                       <TableCell className="text-right">{lote.quantidade}</TableCell>
