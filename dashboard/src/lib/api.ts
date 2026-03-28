@@ -1,0 +1,101 @@
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+export interface Filtros {
+  raca?: string;
+  sexo?: string;
+  idade_min?: number;
+  idade_max?: number;
+  estado?: string;
+  fazenda?: string;
+  dias?: number;
+}
+
+export interface Metricas {
+  media: number | null;
+  minimo: number | null;
+  maximo: number | null;
+  total_lotes: number;
+  total_cabecas: number;
+  tendencia_percentual: number | null;
+}
+
+export interface Lote {
+  id: number;
+  leilao_id: number;
+  leilao_titulo: string | null;
+  leilao_data: string | null;
+  lote_numero: string;
+  quantidade: number;
+  raca: string;
+  sexo: string;
+  idade_meses: number | null;
+  pelagem: string | null;
+  preco_inicial: number | null;
+  preco_final: number | null;
+  preco_por_cabeca: number | null;
+  fazenda_vendedor: string | null;
+  local_cidade: string | null;
+  local_estado: string | null;
+  timestamp_video_inicio: string | null;
+  status: string;
+  aparicoes: number;
+  confianca_media: number;
+  frame_paths: string[];
+}
+
+export interface FiltrosOpcoes {
+  racas: string[];
+  sexos: string[];
+  estados: string[];
+  fazendas: string[];
+  faixas_idade: { label: string; min: number; max: number }[];
+}
+
+export interface Fazenda {
+  fazenda: string;
+  media: number;
+  lotes: number;
+  cabecas: number;
+}
+
+export interface Regiao {
+  estado: string;
+  media: number;
+  lotes: number;
+}
+
+export interface PontoTendencia {
+  data: string;
+  leilao: string;
+  media: number;
+  lotes: number;
+}
+
+function buildParams(filtros: Filtros): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filtros.raca) params.set("raca", filtros.raca);
+  if (filtros.sexo) params.set("sexo", filtros.sexo);
+  if (filtros.idade_min !== undefined) params.set("idade_min", String(filtros.idade_min));
+  if (filtros.idade_max !== undefined) params.set("idade_max", String(filtros.idade_max));
+  if (filtros.estado) params.set("estado", filtros.estado);
+  if (filtros.fazenda) params.set("fazenda", filtros.fazenda);
+  if (filtros.dias) params.set("dias", String(filtros.dias));
+  return params;
+}
+
+async function fetchJson<T>(path: string, params?: URLSearchParams): Promise<T> {
+  const url = params ? `${API_URL}${path}?${params}` : `${API_URL}${path}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  return res.json();
+}
+
+export const api = {
+  filtros: () => fetchJson<FiltrosOpcoes>("/api/filtros"),
+  metricas: (f: Filtros) => fetchJson<Metricas>("/api/metricas", buildParams(f)),
+  lotes: (f: Filtros) => fetchJson<Lote[]>("/api/lotes", buildParams(f)),
+  tendencia: (f: Filtros) => fetchJson<PontoTendencia[]>("/api/tendencia", buildParams(f)),
+  fazendas: (f: Filtros) => fetchJson<Fazenda[]>("/api/fazendas", buildParams(f)),
+  regioes: (f: Filtros) => fetchJson<Regiao[]>("/api/regioes", buildParams(f)),
+  frameUrl: (path: string) => `${API_URL}/api/frame/${path}`,
+};

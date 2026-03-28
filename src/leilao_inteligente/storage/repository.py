@@ -67,6 +67,7 @@ def salvar_leilao(
                 confianca_media=lote_data.confianca_media,
                 aparicoes=lote_data.aparicoes,
                 status=lote_data.status,
+                frame_paths="|".join(lote_data.frame_paths) if lote_data.frame_paths else None,
             )
             session.add(lote)
 

@@ -165,6 +165,7 @@ def consolidar_lotes(
             confianca_media=sum(f.lote.confianca for f in frames_com_preco) / len(frames_com_preco),
             aparicoes=aparicoes,
             status=status,
+            frame_paths=frame_paths_salvos,
         )
         consolidados.append(consolidado)
 
