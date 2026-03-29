@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
+import numpy as np
 from google import genai
 from google.genai.types import GenerateContentConfig, Part
 
@@ -16,7 +17,9 @@ from leilao_inteligente.config import get_settings, DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-FRAME_WIDTH = 640
+FRAME_WIDTH = 420
+TOPO_PERCENT = 15   # 15% superior (logos, cidade, hora)
+BASE_PERCENT = 50   # 50% inferior (lote, descrição, preço, fazenda)
 MAX_PARALELO = 20
 CACHE_DIR = DATA_DIR / "gemini_cache"
 
@@ -117,21 +120,28 @@ def _cache_set(key: str, dados: dict[str, object]) -> None:
 
 
 def _preparar_frame(frame_path: Path) -> bytes:
-    """Redimensiona o frame inteiro pra largura padrao (640p).
+    """Recorta topo (15%) + base (50%) do frame, descartando o meio (gado).
 
-    Envia o frame completo ao Gemini (sem recorte) para suportar
-    qualquer layout de overlay — o Gemini le a imagem inteira.
+    O overlay de leilão fica sempre no topo e na base do frame.
+    O meio mostra o gado (irrelevante pra extração de dados).
+    Juntar topo+base reduz ~67% dos tokens sem perder informação.
     """
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
 
     h, w = frame.shape[:2]
-    if w > FRAME_WIDTH:
-        new_h = int(h * FRAME_WIDTH / w)
-        frame = cv2.resize(frame, (FRAME_WIDTH, new_h), interpolation=cv2.INTER_AREA)
 
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    topo = frame[0:int(h * TOPO_PERCENT / 100), :]
+    base = frame[int(h * (100 - BASE_PERCENT) / 100):, :]
+
+    combinado = np.vstack([topo, base])
+
+    ch, cw = combinado.shape[:2]
+    new_h = int(ch * FRAME_WIDTH / cw)
+    combinado = cv2.resize(combinado, (FRAME_WIDTH, new_h), interpolation=cv2.INTER_AREA)
+
+    _, buf = cv2.imencode(".jpg", combinado, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return buf.tobytes()
 
 
