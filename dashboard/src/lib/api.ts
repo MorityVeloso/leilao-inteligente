@@ -15,6 +15,7 @@ export interface Filtros {
   qtd_min?: number;
   qtd_max?: number;
   leilao_id?: number;
+  condicao?: string;
   ordenar?: string;
 }
 
@@ -110,6 +111,7 @@ function buildParams(filtros: Filtros): URLSearchParams {
   if (filtros.qtd_min !== undefined) params.set("qtd_min", String(filtros.qtd_min));
   if (filtros.qtd_max !== undefined) params.set("qtd_max", String(filtros.qtd_max));
   if (filtros.leilao_id !== undefined) params.set("leilao_id", String(filtros.leilao_id));
+  if (filtros.condicao) params.set("condicao", filtros.condicao);
   if (filtros.ordenar) params.set("ordenar", filtros.ordenar);
   return params;
 }

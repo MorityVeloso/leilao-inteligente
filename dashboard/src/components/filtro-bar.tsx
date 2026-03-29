@@ -174,6 +174,21 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         </Select>
 
         <Select
+          value={filtros.condicao ?? ""}
+          onValueChange={(v) => setFiltro("condicao", v === "todas" ? undefined : v)}
+        >
+          <SelectTrigger className="w-[120px] h-8 text-xs">
+            <SelectValue placeholder="Condição" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="todas">Todas</SelectItem>
+            <SelectItem value="parida">Parida</SelectItem>
+            <SelectItem value="prenhe">Prenhe</SelectItem>
+            <SelectItem value="solteira">Solteira</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select
           value={filtros.preco_min !== undefined ? `${filtros.preco_min}-${filtros.preco_max}` : ""}
           onValueChange={(v) => {
             if (v === "todos") {

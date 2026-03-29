@@ -83,7 +83,7 @@ def _aplicar_filtros(
     query, raca=None, sexo=None, idade_min=None, idade_max=None,
     estado=None, cidade=None, fazenda=None, dias=None, status=None,
     preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
-    leilao_id=None,
+    leilao_id=None, condicao=None,
 ):
     """Aplica filtros ao query de lotes."""
     joined_leilao = False
@@ -92,6 +92,8 @@ def _aplicar_filtros(
         query = query.filter(Lote.raca == raca)
     if sexo:
         query = query.filter(Lote.sexo == sexo)
+    if condicao:
+        query = query.filter(Lote.condicao == condicao)
     if idade_min is not None:
         query = query.filter(Lote.idade_meses >= idade_min)
     if idade_max is not None:
@@ -145,6 +147,7 @@ def get_lotes(
     qtd_min: int | None = None,
     qtd_max: int | None = None,
     leilao_id: int | None = None,
+    condicao: str | None = None,
     ordenar: str | None = None,
     limite: int = Query(default=200, le=1000),
 ):
@@ -157,7 +160,7 @@ def get_lotes(
             q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
             estado=estado, cidade=cidade, fazenda=fazenda, dias=dias, status=status,
             preco_min=preco_min, preco_max=preco_max, qtd_min=qtd_min, qtd_max=qtd_max,
-            leilao_id=leilao_id,
+            leilao_id=leilao_id, condicao=condicao,
         )
         q = q.filter(Lote.preco_final > 0)
 
