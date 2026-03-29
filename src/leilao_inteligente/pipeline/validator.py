@@ -47,6 +47,12 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
         except InvalidOperation:
             resultado["preco_lance"] = None
 
+    # Corrigir precos visivelmente truncados (ex: 27 em vez de 2700)
+    preco_val = resultado.get("preco_lance")
+    if isinstance(preco_val, (int, float, Decimal)) and 0 < float(preco_val) < 500:
+        resultado["preco_lance"] = Decimal(str(preco_val)) * 100
+        logger.debug("Preco corrigido: %s → %s (provavelmente truncado)", preco_val, resultado["preco_lance"])
+
     # Normalizar sexo
     sexo = resultado.get("sexo")
     if isinstance(sexo, str):
