@@ -40,7 +40,7 @@ function formatBRL(value: number | null): string {
 function categoriaLabel(c: ComparativoCategoria): string {
   const sexo = c.sexo === "macho" ? "M" : c.sexo === "femea" ? "F" : "Mx";
   const cond = c.condicao ? ` ${c.condicao}` : "";
-  return `${c.raca} ${sexo}${cond} ${c.faixa_idade}`;
+  return `${c.raca} ${sexo}${cond} ${c.idade_meses}m`;
 }
 
 export function ComparativoPage() {
@@ -317,7 +317,7 @@ export function ComparativoPage() {
                             ({c.lotes_a}+{c.lotes_b} lotes)
                           </span>
                         </TableCell>
-                        <TableCell className="px-2">{c.faixa_idade}</TableCell>
+                        <TableCell className="px-2">{c.idade_meses}m</TableCell>
                         <TableCell className="px-2 text-right">
                           {c.media_a != null ? formatBRL(c.media_a) : <span className="text-muted-foreground">—</span>}
                         </TableCell>

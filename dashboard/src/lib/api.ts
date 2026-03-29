@@ -131,7 +131,7 @@ export interface ComparativoCategoria {
   raca: string;
   sexo: string;
   condicao: string | null;
-  faixa_idade: string;
+  idade_meses: number;
   media_a: number | null;
   media_b: number | null;
   diff: number | null;

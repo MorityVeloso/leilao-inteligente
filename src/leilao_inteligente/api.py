@@ -473,32 +473,13 @@ def get_leiloes():
 # --- Comparativo ---
 
 
-FAIXAS_IDADE = [
-    (0, 12, "0-12m"),
-    (13, 18, "13-18m"),
-    (19, 24, "19-24m"),
-    (25, 36, "25-36m"),
-    (37, 999, "36m+"),
-]
-
-
-def _faixa_idade_case():
-    """Retorna case() do SQLAlchemy pra agrupar idades em faixas."""
-    return case(
-        *[(Lote.idade_meses <= fmax, label) for fmin, fmax, label in FAIXAS_IDADE[:-1]],
-        else_=FAIXAS_IDADE[-1][2],
-    )
-
-
 def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=None, condicao=None):
-    """Consulta médias agrupadas por categoria para uma cidade."""
-    faixa = _faixa_idade_case()
-
+    """Consulta médias agrupadas por categoria (idade exata) para uma cidade."""
     q = session.query(
         Lote.raca.label("raca"),
         Lote.sexo.label("sexo"),
         Lote.condicao.label("condicao"),
-        faixa.label("faixa_idade"),
+        Lote.idade_meses.label("idade_meses"),
         func.avg(Lote.preco_final).label("media"),
         func.min(Lote.preco_final).label("minimo"),
         func.max(Lote.preco_final).label("maximo"),
@@ -519,7 +500,7 @@ def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=No
         desde = datetime.utcnow() - timedelta(days=dias)
         q = q.filter(Leilao.processado_em >= desde)
 
-    q = q.group_by(Lote.raca, Lote.sexo, Lote.condicao, faixa)
+    q = q.group_by(Lote.raca, Lote.sexo, Lote.condicao, Lote.idade_meses)
     return q.all()
 
 
@@ -538,9 +519,9 @@ def get_comparativo_cidades(
         dados_a = _query_medias_por_cidade(session, cidade_a, dias, raca, sexo, condicao)
         dados_b = _query_medias_por_cidade(session, cidade_b, dias, raca, sexo, condicao)
 
-        # Indexar por chave de categoria
+        # Indexar por chave de categoria (idade exata)
         def _key(row):
-            return (row.raca, row.sexo, row.condicao or "", row.faixa_idade)
+            return (row.raca, row.sexo, row.condicao or "", row.idade_meses)
 
         mapa_a = {_key(r): r for r in dados_a}
         mapa_b = {_key(r): r for r in dados_b}
@@ -565,7 +546,7 @@ def get_comparativo_cidades(
                 "raca": chave[0],
                 "sexo": chave[1],
                 "condicao": chave[2] or None,
-                "faixa_idade": chave[3],
+                "idade_meses": chave[3],
                 "media_a": media_a,
                 "media_b": media_b,
                 "diff": diff,
