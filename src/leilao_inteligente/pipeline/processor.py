@@ -24,6 +24,7 @@ REPESCAGEM_MIN_MINUTOS = 10
 FRAMES_VISUAIS_POR_LOTE = 4
 LOTE_FRAMES_DIR = DATA_DIR / "lote_frames"
 JANELA_ARREMATACAO_SEGUNDOS = 15
+OUTLIER_GAP_SEGUNDOS = 300  # 5 min — frame isolado do cluster principal
 
 
 def _valor_mais_frequente(valores: list[str | None]) -> str | None:
@@ -94,11 +95,130 @@ def salvar_frames_visuais(
     return salvos
 
 
+def _filtrar_frames_outliers(
+    lotes_com_frame: list[LoteComFrame],
+) -> list[LoteComFrame]:
+    """Remove frames temporalmente isolados do cluster principal de cada lote.
+
+    O Gemini as vezes le o numero do lote errado em frames de transicao,
+    associando um frame de outro lote ao lote errado. Esses frames ficam
+    isolados temporalmente (>5min do cluster principal).
+
+    Usa DBSCAN simplificado: encontra o maior cluster de frames proximos
+    e descarta os outliers.
+    """
+    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+    for lcf in lotes_com_frame:
+        por_lote[lcf.lote.lote_numero].append(lcf)
+
+    resultado: list[LoteComFrame] = []
+    total_removidos = 0
+
+    for numero, frames in por_lote.items():
+        if len(frames) <= 2:
+            resultado.extend(frames)
+            continue
+
+        # Ordenar por timestamp
+        frames.sort(key=lambda x: x.lote.timestamp_frame)
+
+        # Agrupar em clusters por proximidade temporal
+        clusters: list[list[LoteComFrame]] = [[frames[0]]]
+        for f in frames[1:]:
+            diff = (f.lote.timestamp_frame - clusters[-1][-1].lote.timestamp_frame).total_seconds()
+            if diff <= OUTLIER_GAP_SEGUNDOS:
+                clusters[-1].append(f)
+            else:
+                clusters.append([f])
+
+        # Manter apenas o maior cluster (se empate, manter todos — pode ser repescagem)
+        maior_tamanho = max(len(c) for c in clusters)
+        clusters_maiores = [c for c in clusters if len(c) == maior_tamanho]
+
+        if len(clusters_maiores) > 1:
+            # Empate: pode ser repescagem legítima, manter tudo
+            resultado.extend(frames)
+            continue
+
+        maior_cluster = clusters_maiores[0]
+
+        removidos = len(frames) - len(maior_cluster)
+        if removidos > 0:
+            total_removidos += removidos
+            logger.info(
+                "Lote %s: removidos %d frames outliers (%d clusters, mantendo %d frames)",
+                numero, removidos, len(clusters), len(maior_cluster),
+            )
+
+        resultado.extend(maior_cluster)
+
+    if total_removidos:
+        logger.info("Total frames outliers removidos: %d", total_removidos)
+    return resultado
+
+
+def _dedup_lotes_por_similaridade(lotes: list[LoteConsolidado]) -> list[LoteConsolidado]:
+    """Remove lotes duplicados por similaridade de dados (nao so por numero invertido).
+
+    O Gemini le o mesmo overlay como numeros diferentes (ex: 0005 e 2000).
+    Detecta pares comparando raca, sexo, quantidade, preco e timestamps,
+    independente do numero do lote.
+    """
+    removidos: set[int] = set()
+
+    for i in range(len(lotes)):
+        if i in removidos:
+            continue
+
+        for j in range(i + 1, len(lotes)):
+            if j in removidos:
+                continue
+
+            a, b = lotes[i], lotes[j]
+
+            mesma_raca = a.raca.lower() == b.raca.lower()
+            mesmo_sexo = a.sexo == b.sexo
+            mesma_qtd = a.quantidade == b.quantidade
+            mesmo_preco = a.preco_final == b.preco_final
+
+            diff_tempo = abs(
+                (a.timestamp_inicio - b.timestamp_inicio).total_seconds()
+            )
+            tempo_proximo = diff_tempo < 30 * 60
+
+            # Precisa de: mesmo preco + mesma qtd + tempo proximo + pelo menos 1 de (raca, sexo)
+            if mesmo_preco and mesma_qtd and tempo_proximo and (mesma_raca or mesmo_sexo):
+                # Manter o com mais frames
+                if b.frames_analisados > a.frames_analisados:
+                    removidos.add(i)
+                    logger.info(
+                        "Lote duplicado: %s = %s (mantendo %s, %d frames vs %d)",
+                        a.lote_numero, b.lote_numero, b.lote_numero,
+                        b.frames_analisados, a.frames_analisados,
+                    )
+                    break  # i foi removido, sair do loop j
+                else:
+                    removidos.add(j)
+                    logger.info(
+                        "Lote duplicado: %s = %s (mantendo %s, %d frames vs %d)",
+                        b.lote_numero, a.lote_numero, a.lote_numero,
+                        a.frames_analisados, b.frames_analisados,
+                    )
+
+    resultado = [l for i, l in enumerate(lotes) if i not in removidos]
+    if removidos:
+        logger.info("Removidos %d lotes duplicados por similaridade", len(removidos))
+    return resultado
+
+
 def consolidar_lotes(
     lotes_com_frame: list[LoteComFrame],
     video_id: str = "",
 ) -> list[LoteConsolidado]:
     """Agrupa frames por lote e consolida em registros unicos."""
+    # Filtrar frames outliers antes de agrupar
+    lotes_com_frame = _filtrar_frames_outliers(lotes_com_frame)
+
     por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
     for lcf in lotes_com_frame:
         por_lote[lcf.lote.lote_numero].append(lcf)
@@ -201,6 +321,9 @@ def consolidar_lotes(
 
     # Deduplicar lotes espelhados (1000 = 0001, etc)
     consolidados = _dedup_lotes_espelhados(consolidados)
+
+    # Deduplicar por similaridade de dados (Gemini le mesmo lote como numeros diferentes)
+    consolidados = _dedup_lotes_por_similaridade(consolidados)
 
     logger.info("Consolidados %d lotes", len(consolidados))
     return consolidados

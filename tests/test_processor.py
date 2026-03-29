@@ -13,6 +13,8 @@ from leilao_inteligente.pipeline.processor import (
     LoteComFrame,
     _contar_aparicoes,
     _dedup_lotes_espelhados,
+    _dedup_lotes_por_similaridade,
+    _filtrar_frames_outliers,
     _identificar_janelas_arrematacao,
     _pegar_ultima_aparicao_lcf,
     _valor_mais_frequente,
@@ -476,3 +478,141 @@ class TestIdentificarJanelasArrematacao:
         inicio, _ = janelas["01"]
         # Deve usar frame_000200 (995s) como ultimo, nao frame_000100 (495s)
         assert inicio == 996
+
+
+# ===========================================================================
+# _filtrar_frames_outliers
+# ===========================================================================
+
+
+class TestFiltrarFramesOutliers:
+    def test_sem_outliers(self):
+        """Frames proximos nao sao removidos."""
+        frames = [
+            _lcf("01", offset_min=0),
+            _lcf("01", offset_min=1),
+            _lcf("01", offset_min=2),
+        ]
+        resultado = _filtrar_frames_outliers(frames)
+        assert len(resultado) == 3
+
+    def test_remove_frame_isolado(self):
+        """Frame com gap > 5min do cluster e removido."""
+        frames = [
+            _lcf("01", offset_min=0),
+            _lcf("01", offset_min=1),
+            _lcf("01", offset_min=2),
+            _lcf("01", offset_min=15),  # 15min depois = outlier
+        ]
+        resultado = _filtrar_frames_outliers(frames)
+        assert len(resultado) == 3
+
+    def test_mantem_maior_cluster(self):
+        """Se ha 2 clusters, mantem o maior."""
+        frames = [
+            _lcf("01", offset_min=0),  # cluster 1 (1 frame)
+            _lcf("01", offset_min=10),  # cluster 2 (3 frames)
+            _lcf("01", offset_min=11),
+            _lcf("01", offset_min=12),
+        ]
+        resultado = _filtrar_frames_outliers(frames)
+        assert len(resultado) == 3
+
+    def test_lote_com_2_frames_nao_filtra(self):
+        """Lotes com <= 2 frames nao sao filtrados (pouco dado)."""
+        frames = [
+            _lcf("01", offset_min=0),
+            _lcf("01", offset_min=20),  # longe mas so tem 2
+        ]
+        resultado = _filtrar_frames_outliers(frames)
+        assert len(resultado) == 2
+
+    def test_lotes_diferentes_filtrados_separadamente(self):
+        """Cada lote e filtrado independentemente."""
+        frames = [
+            _lcf("01", offset_min=0),
+            _lcf("01", offset_min=1),
+            _lcf("01", offset_min=2),
+            _lcf("01", offset_min=15),  # outlier do lote 01
+            _lcf("02", offset_min=0),
+            _lcf("02", offset_min=1),
+        ]
+        resultado = _filtrar_frames_outliers(frames)
+        lote01 = [f for f in resultado if f.lote.lote_numero == "01"]
+        lote02 = [f for f in resultado if f.lote.lote_numero == "02"]
+        assert len(lote01) == 3
+        assert len(lote02) == 2
+
+
+# ===========================================================================
+# _dedup_lotes_por_similaridade
+# ===========================================================================
+
+
+class TestDedupLotesPorSimilaridade:
+    def test_lotes_diferentes_mantidos(self):
+        """Lotes com dados diferentes nao sao dedup."""
+        lotes = [
+            _consolidado("01", raca="Nelore", qtd=35),
+            _consolidado("02", raca="Angus", qtd=10),
+        ]
+        resultado = _dedup_lotes_por_similaridade(lotes)
+        assert len(resultado) == 2
+
+    def test_detecta_duplicata_por_dados(self):
+        """Lotes com numeros diferentes mas mesmos dados = duplicata."""
+        lotes = [
+            LoteConsolidado(
+                lote_numero="0005", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("3290"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS, frames_analisados=20, confianca_media=0.9,
+            ),
+            LoteConsolidado(
+                lote_numero="2000", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("3290"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS + timedelta(minutes=5), frames_analisados=3, confianca_media=0.9,
+            ),
+        ]
+        resultado = _dedup_lotes_por_similaridade(lotes)
+        assert len(resultado) == 1
+        assert resultado[0].lote_numero == "0005"  # mais frames
+
+    def test_nao_dedup_preco_diferente(self):
+        """Mesmo perfil mas preco diferente = lotes distintos."""
+        lotes = [
+            LoteConsolidado(
+                lote_numero="01", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("3290"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS, frames_analisados=10, confianca_media=0.9,
+            ),
+            LoteConsolidado(
+                lote_numero="02", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("4500"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS + timedelta(minutes=5), frames_analisados=10, confianca_media=0.9,
+            ),
+        ]
+        resultado = _dedup_lotes_por_similaridade(lotes)
+        assert len(resultado) == 2
+
+    def test_nao_dedup_tempo_distante(self):
+        """Mesmo perfil mas timestamps > 30min = lotes distintos."""
+        lotes = [
+            LoteConsolidado(
+                lote_numero="01", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("3290"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS, frames_analisados=10, confianca_media=0.9,
+            ),
+            LoteConsolidado(
+                lote_numero="02", quantidade=35, raca="Nelore", sexo="macho",
+                preco_inicial=Decimal("3000"), preco_final=Decimal("3290"),
+                local_cidade="Crixas", local_estado="GO",
+                timestamp_inicio=BASE_TS + timedelta(hours=2), frames_analisados=10, confianca_media=0.9,
+            ),
+        ]
+        resultado = _dedup_lotes_por_similaridade(lotes)
+        assert len(resultado) == 2
