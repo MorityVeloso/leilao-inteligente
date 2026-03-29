@@ -6,7 +6,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, case
 
 from leilao_inteligente.config import DATA_DIR
@@ -174,21 +174,6 @@ def _extrair_video_id(url: str) -> str | None:
         match = re.search(pattern, url)
         if match:
             return match.group(1)
-    return None
-
-
-def _calcular_segundo_video(lote: Lote) -> int | None:
-    """Calcula o segundo do video onde o lote aparece."""
-    if not lote.frame_paths:
-        return None
-    primeiro_frame = lote.frame_paths.split("|")[0] if lote.frame_paths else None
-    if not primeiro_frame:
-        return None
-    # Frame path: lote_frames/VIDEO_ID/LOTE/visual_1.jpg
-    # Ou do timestamp_inicio que e baseado no offset do video
-    # Usar timestamp_inicio - data base do processamento
-    # Melhor: extrair do nome do frame original se disponivel
-    # Por ora, estimar pelo frame_paths
     return None
 
 
@@ -460,7 +445,9 @@ def get_leiloes():
 @app.get("/api/frame/{path:path}")
 def get_frame(path: str):
     """Serve um frame visual do gado."""
-    file_path = DATA_DIR / path
+    file_path = (DATA_DIR / path).resolve()
+    if not file_path.is_relative_to(DATA_DIR.resolve()):
+        return JSONResponse({"error": "Acesso negado"}, status_code=403)
     if not file_path.exists():
-        return {"error": "Frame nao encontrado"}
+        return JSONResponse({"error": "Frame nao encontrado"}, status_code=404)
     return FileResponse(file_path)
