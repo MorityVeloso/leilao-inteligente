@@ -9,9 +9,11 @@ import pytest
 
 from leilao_inteligente.models.schemas import LoteConsolidado, LoteExtraido
 from leilao_inteligente.pipeline.processor import (
+    JANELA_ARREMATACAO_SEGUNDOS,
     LoteComFrame,
     _contar_aparicoes,
     _dedup_lotes_espelhados,
+    _identificar_janelas_arrematacao,
     _pegar_ultima_aparicao_lcf,
     consolidar_lotes,
     selecionar_frames_visuais,
@@ -385,3 +387,65 @@ class TestConsolidarLotes:
         result = consolidar_lotes(frames)
         assert len(result) == 1
         assert result[0].frames_analisados == 2
+
+
+# ---------------------------------------------------------------------------
+# _identificar_janelas_arrematacao
+# ---------------------------------------------------------------------------
+
+
+class TestIdentificarJanelasArrematacao:
+    def test_retorna_janela_apos_ultimo_frame(self):
+        """Deve retornar janela de 15s apos o ultimo frame de cada lote."""
+        # frame_000100 → (100-1)*5 = 495s
+        frames = [
+            _lcf("01", preco=3000, frame_name="frame_000100.jpg"),
+        ]
+        janelas = _identificar_janelas_arrematacao(frames)
+        assert "01" in janelas
+        inicio, fim = janelas["01"]
+        assert inicio == 496  # ultimo_ts + 1
+        assert fim == 495 + JANELA_ARREMATACAO_SEGUNDOS
+
+    def test_usa_ultimo_frame_do_lote(self):
+        """Com multiplos frames, usa o de maior timestamp."""
+        # frame_000100 → 495s, frame_000200 → 995s
+        frames = [
+            _lcf("01", preco=1000, frame_name="frame_000100.jpg"),
+            _lcf("01", preco=2000, frame_name="frame_000200.jpg"),
+        ]
+        janelas = _identificar_janelas_arrematacao(frames)
+        inicio, fim = janelas["01"]
+        assert inicio == 996  # (200-1)*5 + 1
+        assert fim == 995 + JANELA_ARREMATACAO_SEGUNDOS
+
+    def test_multiplos_lotes_janelas_separadas(self):
+        """Cada lote tem sua propria janela."""
+        frames = [
+            _lcf("01", preco=1000, frame_name="frame_000100.jpg"),
+            _lcf("02", preco=2000, frame_name="frame_000200.jpg"),
+        ]
+        janelas = _identificar_janelas_arrematacao(frames)
+        assert len(janelas) == 2
+        assert "01" in janelas
+        assert "02" in janelas
+
+    def test_ignora_lote_sem_preco(self):
+        """Lotes com todos os frames preco=0 nao precisam de arrematacao."""
+        frames = [
+            _lcf("01", preco=0, frame_name="frame_000100.jpg"),
+        ]
+        janelas = _identificar_janelas_arrematacao(frames)
+        assert len(janelas) == 0
+
+    def test_inclui_frames_preco_zero_no_calculo_de_tempo(self):
+        """Frames sem preco ainda contam pro calculo do ultimo timestamp."""
+        frames = [
+            _lcf("01", preco=3000, frame_name="frame_000100.jpg"),
+            _lcf("01", preco=0, frame_name="frame_000200.jpg"),  # ultimo mas sem preco
+        ]
+        janelas = _identificar_janelas_arrematacao(frames)
+        assert "01" in janelas
+        inicio, _ = janelas["01"]
+        # Deve usar frame_000200 (995s) como ultimo, nao frame_000100 (495s)
+        assert inicio == 996

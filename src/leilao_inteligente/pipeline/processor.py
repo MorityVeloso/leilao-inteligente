@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 REPESCAGEM_MIN_MINUTOS = 10
 FRAMES_VISUAIS_POR_LOTE = 4
 LOTE_FRAMES_DIR = DATA_DIR / "lote_frames"
+JANELA_ARREMATACAO_SEGUNDOS = 15
 
 
 # Registro que associa um LoteExtraido ao seu frame_path original
@@ -384,6 +385,25 @@ def processar_video(url: str) -> list[LoteConsolidado]:
                 len(novos_lcfs), len(consolidados),
             )
 
+    # 7. Passada 3: capturar lance de arrematacao (ultimos segundos de cada lote)
+    janelas_arrematacao = _identificar_janelas_arrematacao(lotes_com_frame)
+
+    if janelas_arrematacao:
+        logger.info("Passada 3: capturando arrematacao de %d lotes", len(janelas_arrematacao))
+
+        novos_lcfs_arremate = _refinar_lotes(
+            video_path, janelas_arrematacao, lotes_com_frame, settings.frame_interval_seconds
+        )
+
+        if novos_lcfs_arremate:
+            lotes_com_frame.extend(novos_lcfs_arremate)
+            consolidados = consolidar_lotes(lotes_com_frame, video_id=video_id)
+
+            logger.info(
+                "Passada 3: +%d frames → %d lotes finais",
+                len(novos_lcfs_arremate), len(consolidados),
+            )
+
     return consolidados
 
 
@@ -441,6 +461,61 @@ def _identificar_lotes_pra_refinar(
         refinar[numero] = (inicio, fim)
 
     return refinar
+
+
+def _identificar_janelas_arrematacao(
+    lotes_com_frame: list[LoteComFrame],
+) -> dict[str, tuple[float, float]]:
+    """Identifica janela final de cada lote para capturar o lance de arrematacao.
+
+    O change detector pode perder o ultimo lance porque a mudanca de 1 digito
+    no preco (ex: 4600 → 4700) fica abaixo do threshold. Esta funcao retorna
+    uma janela de JANELA_ARREMATACAO_SEGUNDOS apos o ultimo frame de cada lote,
+    para extrair frames de 1s e capturar o preco final real.
+
+    Returns:
+        Dict de lote_numero → (inicio_segundos, fim_segundos) no video.
+    """
+    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+    for lcf in lotes_com_frame:
+        por_lote[lcf.lote.lote_numero].append(lcf)
+
+    janelas: dict[str, tuple[float, float]] = {}
+
+    for numero, frames in por_lote.items():
+        frames_com_preco = [f for f in frames if f.lote.preco_lance > 0]
+        if not frames_com_preco:
+            continue
+
+        # Extrair timestamps dos frames
+        timestamps: list[float] = []
+        for f in frames:
+            nome = f.frame_path.stem
+            parts = nome.split("_")
+            try:
+                num = int(parts[1])
+                # Detectar se e frame de refine (refine_INICIO_NUM) ou normal (frame_NUM)
+                if parts[0] == "refine":
+                    inicio_seg = int(parts[1])
+                    frame_num = int(parts[2])
+                    ts = inicio_seg + (frame_num - 1)
+                else:
+                    ts = (num - 1) * 5
+                timestamps.append(ts)
+            except (ValueError, IndexError):
+                continue
+
+        if not timestamps:
+            continue
+
+        ultimo_ts = max(timestamps)
+        # Janela: do ultimo frame ate JANELA_ARREMATACAO_SEGUNDOS depois
+        inicio = ultimo_ts + 1  # nao repetir o ultimo frame ja capturado
+        fim = ultimo_ts + JANELA_ARREMATACAO_SEGUNDOS
+
+        janelas[numero] = (inicio, fim)
+
+    return janelas
 
 
 def _refinar_lotes(
