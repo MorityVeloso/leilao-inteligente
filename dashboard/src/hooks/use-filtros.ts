@@ -69,7 +69,7 @@ export function useFiltros() {
   const tags: { key: keyof Filtros; label: string }[] = [];
 
   for (const [k, v] of Object.entries(filtros)) {
-    if (v === undefined || k === "dias" || k === "idade_min" || k === "idade_max" || k === "preco_min" || k === "preco_max" || k === "qtd_min" || k === "qtd_max") continue;
+    if (v === undefined || k === "dias" || k === "data_inicio" || k === "data_fim" || k === "idade_min" || k === "idade_max" || k === "preco_min" || k === "preco_max" || k === "qtd_min" || k === "qtd_max") continue;
     if (k === "leilao_id") {
       tags.push({ key: k as keyof Filtros, label: `Leilao #${v}` });
     } else if (k === "ordenar") {
@@ -80,6 +80,11 @@ export function useFiltros() {
     }
   }
 
+  if (filtros.data_inicio || filtros.data_fim) {
+    const ini = filtros.data_inicio ? new Date(filtros.data_inicio + "T00:00:00").toLocaleDateString("pt-BR") : "?";
+    const fim = filtros.data_fim ? new Date(filtros.data_fim + "T00:00:00").toLocaleDateString("pt-BR") : "?";
+    tags.push({ key: "data_inicio", label: `${ini} — ${fim}` });
+  }
   if (filtros.idade_min !== undefined || filtros.idade_max !== undefined) {
     tags.push({ key: "idade_min", label: `${filtros.idade_min ?? "?"}–${filtros.idade_max ?? "?"}m` });
   }

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -129,10 +130,18 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         )}
 
         <Select
-          value={String(filtros.dias ?? 60)}
-          onValueChange={(v) => setFiltro("dias", Number(v))}
+          value={filtros.data_inicio ? "custom" : String(filtros.dias ?? 60)}
+          onValueChange={(v) => {
+            if (v === "custom") {
+              setFiltro("dias", undefined);
+            } else {
+              setFiltro("data_inicio", undefined);
+              setFiltro("data_fim", undefined);
+              setFiltro("dias", Number(v));
+            }
+          }}
         >
-          <SelectTrigger className="w-[110px] h-8 text-xs">
+          <SelectTrigger className="w-[130px] h-8 text-xs">
             <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
@@ -141,8 +150,27 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             <SelectItem value="90">90 dias</SelectItem>
             <SelectItem value="180">6 meses</SelectItem>
             <SelectItem value="365">1 ano</SelectItem>
+            <SelectItem value="custom">Personalizado</SelectItem>
           </SelectContent>
         </Select>
+
+        {filtros.data_inicio !== undefined && (
+          <>
+            <Input
+              type="date"
+              value={filtros.data_inicio ?? ""}
+              onChange={(e) => setFiltro("data_inicio", e.target.value || undefined)}
+              className="w-[130px] h-8 text-xs"
+            />
+            <span className="text-xs text-muted-foreground self-center">a</span>
+            <Input
+              type="date"
+              value={filtros.data_fim ?? ""}
+              onChange={(e) => setFiltro("data_fim", e.target.value || undefined)}
+              className="w-[130px] h-8 text-xs"
+            />
+          </>
+        )}
 
         <Select
           value={filtros.fazenda ?? ""}
@@ -279,7 +307,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
               variant="secondary"
               className="cursor-pointer gap-1 text-xs"
               onClick={() => {
-                if (tag.key === "idade_min" || tag.key === "idade_max") {
+                if (tag.key === "data_inicio" || tag.key === "data_fim") {
+                  setFiltro("data_inicio", undefined);
+                  setFiltro("data_fim", undefined);
+                  setFiltro("dias", 60);
+                } else if (tag.key === "idade_min" || tag.key === "idade_max") {
                   setFaixaIdade(undefined, undefined);
                 } else if (tag.key === "preco_min" || tag.key === "preco_max") {
                   setFaixaPreco(undefined, undefined);

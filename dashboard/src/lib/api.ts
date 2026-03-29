@@ -9,6 +9,8 @@ export interface Filtros {
   cidade?: string;
   fazenda?: string;
   dias?: number;
+  data_inicio?: string;
+  data_fim?: string;
   status?: string;
   preco_min?: number;
   preco_max?: number;
@@ -105,6 +107,8 @@ function buildParams(filtros: Filtros): URLSearchParams {
   if (filtros.cidade) params.set("cidade", filtros.cidade);
   if (filtros.fazenda) params.set("fazenda", filtros.fazenda);
   if (filtros.dias) params.set("dias", String(filtros.dias));
+  if (filtros.data_inicio) params.set("data_inicio", filtros.data_inicio);
+  if (filtros.data_fim) params.set("data_fim", filtros.data_fim);
   if (filtros.status) params.set("status", filtros.status);
   if (filtros.preco_min !== undefined) params.set("preco_min", String(filtros.preco_min));
   if (filtros.preco_max !== undefined) params.set("preco_max", String(filtros.preco_max));

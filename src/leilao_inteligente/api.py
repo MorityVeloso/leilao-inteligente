@@ -81,7 +81,9 @@ def get_filtros():
 
 def _aplicar_filtros(
     query, raca=None, sexo=None, idade_min=None, idade_max=None,
-    estado=None, cidade=None, fazenda=None, dias=None, status=None,
+    estado=None, cidade=None, fazenda=None, dias=None,
+    data_inicio=None, data_fim=None,
+    status=None,
     preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
     leilao_id=None, condicao=None,
 ):
@@ -122,7 +124,15 @@ def _aplicar_filtros(
             query = query.join(Leilao, isouter=True)
             joined_leilao = True
         query = query.filter(Leilao.local_cidade == cidade)
-    if dias:
+    if data_inicio or data_fim:
+        if not joined_leilao:
+            query = query.join(Leilao, isouter=True)
+            joined_leilao = True
+        if data_inicio:
+            query = query.filter(Leilao.processado_em >= datetime.fromisoformat(data_inicio))
+        if data_fim:
+            query = query.filter(Leilao.processado_em <= datetime.fromisoformat(data_fim + "T23:59:59"))
+    elif dias:
         desde = datetime.utcnow() - timedelta(days=dias)
         if not joined_leilao:
             query = query.join(Leilao, isouter=True)
@@ -141,6 +151,8 @@ def get_lotes(
     cidade: str | None = None,
     fazenda: str | None = None,
     dias: int | None = None,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
     status: str | None = None,
     preco_min: float | None = None,
     preco_max: float | None = None,
@@ -158,7 +170,8 @@ def get_lotes(
 
         q = _aplicar_filtros(
             q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
-            estado=estado, cidade=cidade, fazenda=fazenda, dias=dias, status=status,
+            estado=estado, cidade=cidade, fazenda=fazenda, dias=dias,
+            data_inicio=data_inicio, data_fim=data_fim, status=status,
             preco_min=preco_min, preco_max=preco_max, qtd_min=qtd_min, qtd_max=qtd_max,
             leilao_id=leilao_id, condicao=condicao,
         )
