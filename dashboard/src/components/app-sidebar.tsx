@@ -3,6 +3,7 @@ import {
   BarChart3,
   ClipboardList,
   LineChart,
+  Scale,
   Radio,
   Settings,
   Beef,
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { title: "Dashboard", icon: BarChart3, path: "/" },
   { title: "Leilões", icon: ClipboardList, path: "/leiloes" },
   { title: "Análise", icon: LineChart, path: "/analise" },
+  { title: "Comparativo", icon: Scale, path: "/comparativo" },
   { title: "Ao Vivo", icon: Radio, path: "/ao-vivo" },
 ];
 

@@ -470,6 +470,176 @@ def get_leiloes():
         session.close()
 
 
+# --- Comparativo ---
+
+
+FAIXAS_IDADE = [
+    (0, 12, "0-12m"),
+    (13, 18, "13-18m"),
+    (19, 24, "19-24m"),
+    (25, 36, "25-36m"),
+    (37, 999, "36m+"),
+]
+
+
+def _faixa_idade_case():
+    """Retorna case() do SQLAlchemy pra agrupar idades em faixas."""
+    return case(
+        *[(Lote.idade_meses <= fmax, label) for fmin, fmax, label in FAIXAS_IDADE[:-1]],
+        else_=FAIXAS_IDADE[-1][2],
+    )
+
+
+def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=None, condicao=None):
+    """Consulta médias agrupadas por categoria para uma cidade."""
+    faixa = _faixa_idade_case()
+
+    q = session.query(
+        Lote.raca.label("raca"),
+        Lote.sexo.label("sexo"),
+        Lote.condicao.label("condicao"),
+        faixa.label("faixa_idade"),
+        func.avg(Lote.preco_final).label("media"),
+        func.min(Lote.preco_final).label("minimo"),
+        func.max(Lote.preco_final).label("maximo"),
+        func.count(Lote.id).label("lotes"),
+    ).join(Leilao)
+
+    q = q.filter(Leilao.local_cidade == cidade)
+    q = q.filter(Lote.preco_final > 0)
+    q = q.filter(Lote.idade_meses.isnot(None))
+
+    if raca:
+        q = q.filter(Lote.raca == raca)
+    if sexo:
+        q = q.filter(Lote.sexo == sexo)
+    if condicao:
+        q = q.filter(Lote.condicao == condicao)
+    if dias:
+        desde = datetime.utcnow() - timedelta(days=dias)
+        q = q.filter(Leilao.processado_em >= desde)
+
+    q = q.group_by(Lote.raca, Lote.sexo, Lote.condicao, faixa)
+    return q.all()
+
+
+@app.get("/api/comparativo/cidades")
+def get_comparativo_cidades(
+    cidade_a: str = Query(...),
+    cidade_b: str = Query(...),
+    raca: str | None = None,
+    sexo: str | None = None,
+    condicao: str | None = None,
+    dias: int = 90,
+):
+    """Compara preços médios entre duas cidades por categoria de animal."""
+    session = get_session()
+    try:
+        dados_a = _query_medias_por_cidade(session, cidade_a, dias, raca, sexo, condicao)
+        dados_b = _query_medias_por_cidade(session, cidade_b, dias, raca, sexo, condicao)
+
+        # Indexar por chave de categoria
+        def _key(row):
+            return (row.raca, row.sexo, row.condicao or "", row.faixa_idade)
+
+        mapa_a = {_key(r): r for r in dados_a}
+        mapa_b = {_key(r): r for r in dados_b}
+
+        todas_chaves = set(mapa_a.keys()) | set(mapa_b.keys())
+
+        categorias = []
+        for chave in sorted(todas_chaves):
+            a = mapa_a.get(chave)
+            b = mapa_b.get(chave)
+            media_a = round(float(a.media), 2) if a else None
+            media_b = round(float(b.media), 2) if b else None
+
+            diff = None
+            diff_pct = None
+            if media_a is not None and media_b is not None:
+                diff = round(media_b - media_a, 2)
+                if media_a > 0:
+                    diff_pct = round((media_b - media_a) / media_a * 100, 1)
+
+            categorias.append({
+                "raca": chave[0],
+                "sexo": chave[1],
+                "condicao": chave[2] or None,
+                "faixa_idade": chave[3],
+                "media_a": media_a,
+                "media_b": media_b,
+                "diff": diff,
+                "diff_pct": diff_pct,
+                "lotes_a": a.lotes if a else 0,
+                "lotes_b": b.lotes if b else 0,
+            })
+
+        return {
+            "cidade_a": cidade_a,
+            "cidade_b": cidade_b,
+            "categorias": categorias,
+        }
+    finally:
+        session.close()
+
+
+@app.get("/api/comparativo/evolucao")
+def get_comparativo_evolucao(
+    cidade: str = Query(...),
+    raca: str | None = None,
+    sexo: str | None = None,
+    condicao: str | None = None,
+    idade_min: int | None = None,
+    idade_max: int | None = None,
+    dias: int = 180,
+):
+    """Evolução de preço de uma categoria ao longo dos leilões numa cidade."""
+    session = get_session()
+    try:
+        q = session.query(
+            Leilao.processado_em.label("data"),
+            Leilao.titulo.label("leilao"),
+            func.avg(Lote.preco_final).label("media"),
+            func.min(Lote.preco_final).label("minimo"),
+            func.max(Lote.preco_final).label("maximo"),
+            func.count(Lote.id).label("lotes"),
+        ).join(Leilao)
+
+        q = q.filter(Leilao.local_cidade == cidade)
+        q = q.filter(Lote.preco_final > 0)
+
+        if raca:
+            q = q.filter(Lote.raca == raca)
+        if sexo:
+            q = q.filter(Lote.sexo == sexo)
+        if condicao:
+            q = q.filter(Lote.condicao == condicao)
+        if idade_min is not None:
+            q = q.filter(Lote.idade_meses >= idade_min)
+        if idade_max is not None:
+            q = q.filter(Lote.idade_meses <= idade_max)
+        if dias:
+            desde = datetime.utcnow() - timedelta(days=dias)
+            q = q.filter(Leilao.processado_em >= desde)
+
+        q = q.group_by(Leilao.id)
+        q = q.order_by(Leilao.processado_em)
+
+        return [
+            {
+                "data": row.data.isoformat() if row.data else None,
+                "leilao": row.leilao,
+                "media": round(float(row.media), 2),
+                "minimo": round(float(row.minimo), 2),
+                "maximo": round(float(row.maximo), 2),
+                "lotes": row.lotes,
+            }
+            for row in q.all()
+        ]
+    finally:
+        session.close()
+
+
 # --- Frames visuais ---
 
 

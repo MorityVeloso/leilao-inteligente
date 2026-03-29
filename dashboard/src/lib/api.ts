@@ -127,6 +127,42 @@ async function fetchJson<T>(path: string, params?: URLSearchParams): Promise<T> 
   return res.json();
 }
 
+export interface ComparativoCategoria {
+  raca: string;
+  sexo: string;
+  condicao: string | null;
+  faixa_idade: string;
+  media_a: number | null;
+  media_b: number | null;
+  diff: number | null;
+  diff_pct: number | null;
+  lotes_a: number;
+  lotes_b: number;
+}
+
+export interface ComparativoCidades {
+  cidade_a: string;
+  cidade_b: string;
+  categorias: ComparativoCategoria[];
+}
+
+export interface PontoEvolucao {
+  data: string;
+  leilao: string;
+  media: number;
+  minimo: number;
+  maximo: number;
+  lotes: number;
+}
+
+function buildSimpleParams(obj: Record<string, string | number | undefined | null>): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v != null && v !== "") params.set(k, String(v));
+  }
+  return params;
+}
+
 export const api = {
   filtros: () => fetchJson<FiltrosOpcoes>("/api/filtros"),
   metricas: (f: Filtros) => fetchJson<Metricas>("/api/metricas", buildParams(f)),
@@ -135,5 +171,9 @@ export const api = {
   fazendas: (f: Filtros) => fetchJson<Fazenda[]>("/api/fazendas", buildParams(f)),
   regioes: (f: Filtros) => fetchJson<Regiao[]>("/api/regioes", buildParams(f)),
   leiloes: () => fetchJson<LeilaoResumo[]>("/api/leiloes"),
+  comparativoCidades: (p: { cidade_a: string; cidade_b: string; raca?: string; sexo?: string; condicao?: string; dias?: number }) =>
+    fetchJson<ComparativoCidades>("/api/comparativo/cidades", buildSimpleParams(p)),
+  comparativoEvolucao: (p: { cidade: string; raca?: string; sexo?: string; condicao?: string; idade_min?: number; idade_max?: number; dias?: number }) =>
+    fetchJson<PontoEvolucao[]>("/api/comparativo/evolucao", buildSimpleParams(p)),
   frameUrl: (path: string) => `${API_URL}/api/frame/${path}`,
 };
