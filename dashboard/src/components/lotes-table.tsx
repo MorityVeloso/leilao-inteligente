@@ -68,7 +68,8 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[30px]" />
-                  <TableHead>Data</TableHead>
+                  <TableHead>Leilão</TableHead>
+                  <TableHead>Cidade</TableHead>
                   <TableHead>Lote</TableHead>
                   <TableHead className="text-right">Qtd</TableHead>
                   <TableHead>Raça</TableHead>
@@ -96,9 +97,14 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                             : <ChevronRight className="h-4 w-4" />
                         )}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                        {lote.leilao_data
-                          ? new Date(lote.leilao_data).toLocaleDateString("pt-BR")
+                      <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate" title={lote.leilao_titulo ?? ""}>
+                        {lote.leilao_titulo
+                          ? lote.leilao_titulo.replace(/LEIL[ÃA]O\s*/i, "").replace(/\bLIVE\b.*/i, "").trim()
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {lote.local_cidade && lote.local_estado
+                          ? `${lote.local_cidade}-${lote.local_estado}`
                           : "—"}
                       </TableCell>
                       <TableCell className="font-mono font-bold">{lote.lote_numero}</TableCell>
@@ -147,7 +153,7 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
 
                     {expandido === lote.id && lote.frame_paths.length > 0 && (
                       <TableRow key={`${lote.id}-frames`}>
-                        <TableCell colSpan={12} className="bg-muted/30 p-4">
+                        <TableCell colSpan={14} className="bg-muted/30 p-4">
                           <div className="flex gap-3 overflow-x-auto">
                             {lote.frame_paths.map((path, i) => (
                               <img
