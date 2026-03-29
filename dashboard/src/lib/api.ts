@@ -6,6 +6,7 @@ export interface Filtros {
   idade_min?: number;
   idade_max?: number;
   estado?: string;
+  cidade?: string;
   fazenda?: string;
   dias?: number;
   status?: string;
@@ -56,6 +57,7 @@ export interface FiltrosOpcoes {
   racas: string[];
   sexos: string[];
   estados: string[];
+  cidades: string[];
   fazendas: string[];
   leiloes: { id: number; titulo: string }[];
   faixas_idade: { label: string; min: number; max: number }[];
@@ -99,6 +101,7 @@ function buildParams(filtros: Filtros): URLSearchParams {
   if (filtros.idade_min !== undefined) params.set("idade_min", String(filtros.idade_min));
   if (filtros.idade_max !== undefined) params.set("idade_max", String(filtros.idade_max));
   if (filtros.estado) params.set("estado", filtros.estado);
+  if (filtros.cidade) params.set("cidade", filtros.cidade);
   if (filtros.fazenda) params.set("fazenda", filtros.fazenda);
   if (filtros.dias) params.set("dias", String(filtros.dias));
   if (filtros.status) params.set("status", filtros.status);

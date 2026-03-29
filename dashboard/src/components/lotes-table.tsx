@@ -105,7 +105,11 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={lote.leilao_titulo ?? ""}>
                         {lote.leilao_titulo
-                          ? lote.leilao_titulo.replace(/LEIL[ÃA]O\s*/i, "").replace(/\bLIVE\b.*/i, "").trim()
+                          ? lote.leilao_titulo
+                              .replace(/LEIL[ÃA]O\s*/i, "")
+                              .replace(/\bLIVE\b.*/i, "")
+                              .replace(/SINDICATO\s+RURAL/gi, "Sind. Rur.")
+                              .trim()
                           : "—"}
                       </TableCell>
                       <TableCell className="text-xs whitespace-nowrap">
@@ -117,9 +121,14 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                       <TableCell className="text-right">{lote.quantidade}</TableCell>
                       <TableCell>
                         {lote.raca}
-                        {lote.condicao && (
-                          <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
-                            {lote.condicao}
+                        {lote.condicao === "parida" && (
+                          <Badge className="ml-1.5 text-[10px] px-1 py-0 bg-pink-500/15 text-pink-600 hover:bg-pink-500/25">
+                            parida
+                          </Badge>
+                        )}
+                        {lote.condicao === "prenhe" && (
+                          <Badge className="ml-1.5 text-[10px] px-1 py-0 bg-purple-500/15 text-purple-600 hover:bg-purple-500/25">
+                            prenhe
                           </Badge>
                         )}
                       </TableCell>

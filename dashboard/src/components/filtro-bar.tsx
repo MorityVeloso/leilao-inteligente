@@ -111,6 +111,23 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           </SelectContent>
         </Select>
 
+        {opcoes.cidades && opcoes.cidades.length > 0 && (
+          <Select
+            value={filtros.cidade ?? ""}
+            onValueChange={(v) => setFiltro("cidade", v === "todas" ? undefined : v)}
+          >
+            <SelectTrigger className="w-[120px] h-8 text-xs">
+              <SelectValue placeholder="Cidade" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todas">Todas</SelectItem>
+              {opcoes.cidades.map((c) => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select
           value={String(filtros.dias ?? 60)}
           onValueChange={(v) => setFiltro("dias", Number(v))}

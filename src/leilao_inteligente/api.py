@@ -47,6 +47,10 @@ def get_filtros():
             f[0] for f in session.query(Lote.fazenda_vendedor).filter(Lote.fazenda_vendedor.isnot(None)).distinct().order_by(Lote.fazenda_vendedor).all()
             if f[0]
         ]
+        cidades = [
+            c[0] for c in session.query(Leilao.local_cidade).filter(Leilao.local_cidade.isnot(None)).distinct().order_by(Leilao.local_cidade).all()
+            if c[0]
+        ]
 
         leiloes_list = [
             {"id": l.id, "titulo": l.titulo}
@@ -57,6 +61,7 @@ def get_filtros():
             "racas": racas,
             "sexos": sexos,
             "estados": estados,
+            "cidades": cidades,
             "fazendas": fazendas,
             "leiloes": leiloes_list,
             "faixas_idade": [
@@ -76,7 +81,7 @@ def get_filtros():
 
 def _aplicar_filtros(
     query, raca=None, sexo=None, idade_min=None, idade_max=None,
-    estado=None, fazenda=None, dias=None, status=None,
+    estado=None, cidade=None, fazenda=None, dias=None, status=None,
     preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
     leilao_id=None,
 ):
@@ -106,9 +111,15 @@ def _aplicar_filtros(
     if leilao_id is not None:
         query = query.filter(Lote.leilao_id == leilao_id)
     if estado:
-        query = query.join(Leilao, isouter=True)
-        joined_leilao = True
+        if not joined_leilao:
+            query = query.join(Leilao, isouter=True)
+            joined_leilao = True
         query = query.filter(Leilao.local_estado == estado)
+    if cidade:
+        if not joined_leilao:
+            query = query.join(Leilao, isouter=True)
+            joined_leilao = True
+        query = query.filter(Leilao.local_cidade == cidade)
     if dias:
         desde = datetime.utcnow() - timedelta(days=dias)
         if not joined_leilao:
@@ -125,6 +136,7 @@ def get_lotes(
     idade_min: int | None = None,
     idade_max: int | None = None,
     estado: str | None = None,
+    cidade: str | None = None,
     fazenda: str | None = None,
     dias: int | None = None,
     status: str | None = None,
@@ -143,7 +155,7 @@ def get_lotes(
 
         q = _aplicar_filtros(
             q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
-            estado=estado, fazenda=fazenda, dias=dias, status=status,
+            estado=estado, cidade=cidade, fazenda=fazenda, dias=dias, status=status,
             preco_min=preco_min, preco_max=preco_max, qtd_min=qtd_min, qtd_max=qtd_max,
             leilao_id=leilao_id,
         )
