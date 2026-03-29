@@ -130,10 +130,12 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         )}
 
         <Select
-          value={filtros.data_inicio ? "custom" : String(filtros.dias ?? 60)}
+          value={filtros.data_inicio !== undefined ? "custom" : String(filtros.dias ?? 60)}
           onValueChange={(v) => {
             if (v === "custom") {
               setFiltro("dias", undefined);
+              setFiltro("data_inicio", "");
+              setFiltro("data_fim", "");
             } else {
               setFiltro("data_inicio", undefined);
               setFiltro("data_fim", undefined);

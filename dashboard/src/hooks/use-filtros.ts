@@ -11,7 +11,7 @@ export function useFiltros() {
   const setFiltro = useCallback(
     <K extends keyof Filtros>(key: K, value: Filtros[K]) => {
       setFiltros((prev) => {
-        if (value === undefined || value === "" || value === null) {
+        if (value === undefined || value === null || (value === "" && key !== "data_inicio" && key !== "data_fim")) {
           const next = { ...prev };
           delete next[key];
           return next;
