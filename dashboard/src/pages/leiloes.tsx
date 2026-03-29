@@ -28,9 +28,9 @@ export function LeiloesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Leiloes</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Leilões</h1>
           <p className="text-sm text-muted-foreground">
-            Leiloes processados e novos processamentos
+            Leilões processados e novos processamentos
           </p>
         </div>
       </div>
@@ -38,7 +38,7 @@ export function LeiloesPage() {
       {/* Processar novo */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Processar novo leilao</CardTitle>
+          <CardTitle className="text-sm font-medium">Processar novo leilão</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex gap-2">
@@ -54,7 +54,7 @@ export function LeiloesPage() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            O processamento leva ~2 minutos por leilao de 5 horas
+            O processamento leva ~2 minutos por leilão de 5 horas
           </p>
         </CardContent>
       </Card>
@@ -63,7 +63,7 @@ export function LeiloesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium">
-            Leiloes processados ({leiloes.length})
+            Leilões processados ({leiloes.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -73,7 +73,7 @@ export function LeiloesPage() {
             </div>
           ) : leiloes.length === 0 ? (
             <div className="flex items-center justify-center h-[200px] text-muted-foreground">
-              Nenhum leilao processado ainda
+              Nenhum leilão processado ainda
             </div>
           ) : (
             <Table>

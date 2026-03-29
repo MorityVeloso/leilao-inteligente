@@ -28,7 +28,7 @@ export function TendenciaChart({ filtros }: TendenciaChartProps) {
           <CardTitle className="text-sm font-medium">Tendência de preço</CardTitle>
         </CardHeader>
         <CardContent className="flex items-center justify-center h-[200px] text-muted-foreground">
-          Processe mais leiloes para ver a tendencia
+          Processe mais leilões para ver a tendência
         </CardContent>
       </Card>
     );

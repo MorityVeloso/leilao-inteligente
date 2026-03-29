@@ -23,7 +23,7 @@ export function MetricasCards({ filtros }: MetricasCardsProps) {
       <div className="grid grid-cols-2 gap-3">
         <Card className="col-span-2">
           <CardContent className="py-6 text-center text-sm text-destructive">
-            Erro ao carregar metricas
+            Erro ao carregar métricas
           </CardContent>
         </Card>
       </div>

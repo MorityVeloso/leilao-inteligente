@@ -7,7 +7,7 @@ export function AoVivoPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Ao Vivo</h1>
         <p className="text-sm text-muted-foreground">
-          Acompanhamento de leiloes em tempo real
+          Acompanhamento de leilões em tempo real
         </p>
       </div>
 
@@ -16,7 +16,7 @@ export function AoVivoPage() {
           <Radio className="h-12 w-12 mb-4 opacity-30" />
           <p className="text-lg font-medium">Em breve</p>
           <p className="text-sm mt-1">
-            Modo ao vivo com comparacao historica em tempo real
+            Modo ao vivo com comparação histórica em tempo real
           </p>
         </CardContent>
       </Card>

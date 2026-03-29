@@ -42,7 +42,7 @@ export function AnalisePage() {
     api.fazendas(filtros).then(setFazendas);
     api.regioes(filtros).then(setRegioes);
 
-    // Distribuicao por raca e sexo
+    // Distribuição por raça e sexo
     api.lotes(filtros).then((lotes) => {
       const racas: Record<string, number> = {};
       const sexos: Record<string, number> = {};
@@ -57,7 +57,7 @@ export function AnalisePage() {
       );
       setSexoData(
         Object.entries(sexos)
-          .map(([sexo, count]) => ({ sexo: sexo === "macho" ? "Macho" : sexo === "femea" ? "Femea" : "Misto", count }))
+          .map(([sexo, count]) => ({ sexo: sexo === "macho" ? "Macho" : sexo === "femea" ? "Fêmea" : "Misto", count }))
           .sort((a, b) => b.count - a.count)
       );
     });
@@ -67,9 +67,9 @@ export function AnalisePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Analise</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Análise</h1>
           <p className="text-sm text-muted-foreground">
-            Graficos detalhados e comparativos
+            Gráficos detalhados e comparativos
           </p>
         </div>
         <Select
@@ -92,12 +92,12 @@ export function AnalisePage() {
       {/* Tendencia */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm font-medium">Tendencia de preco por leilao</CardTitle>
+          <CardTitle className="text-sm font-medium">Tendência de preço por leilão</CardTitle>
         </CardHeader>
         <CardContent>
           {tendencia.length === 0 ? (
             <div className="flex items-center justify-center h-[250px] text-muted-foreground">
-              Processe mais leiloes para ver a tendencia
+              Processe mais leilões para ver a tendência
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={300}>
@@ -109,7 +109,7 @@ export function AnalisePage() {
                 <XAxis dataKey="dataFmt" className="text-xs" />
                 <YAxis tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
                 <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
-                <Line type="monotone" dataKey="media" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={{ r: 5, fill: "hsl(142, 71%, 45%)" }} name="Media" connectNulls />
+                <Line type="monotone" dataKey="media" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={{ r: 5, fill: "hsl(142, 71%, 45%)" }} name="Média" connectNulls />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -120,7 +120,7 @@ export function AnalisePage() {
         {/* Fazendas */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Preco medio por fazenda (top 10)</CardTitle>
+            <CardTitle className="text-sm font-medium">Preço médio por fazenda (top 10)</CardTitle>
           </CardHeader>
           <CardContent>
             {fazendas.length === 0 ? (
@@ -132,7 +132,7 @@ export function AnalisePage() {
                   <XAxis type="number" tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
                   <YAxis type="category" dataKey="fazenda" className="text-xs" width={80} />
                   <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
-                  <Bar dataKey="media" fill="hsl(142, 71%, 45%)" radius={[0, 4, 4, 0]} name="Media" />
+                  <Bar dataKey="media" fill="hsl(142, 71%, 45%)" radius={[0, 4, 4, 0]} name="Média" />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -142,7 +142,7 @@ export function AnalisePage() {
         {/* Regioes */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Preco medio por regiao</CardTitle>
+            <CardTitle className="text-sm font-medium">Preço médio por região</CardTitle>
           </CardHeader>
           <CardContent>
             {regioes.length === 0 ? (
@@ -154,7 +154,7 @@ export function AnalisePage() {
                   <XAxis dataKey="estado" className="text-xs" />
                   <YAxis tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
                   <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
-                  <Bar dataKey="media" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Media" />
+                  <Bar dataKey="media" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Média" />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -163,10 +163,10 @@ export function AnalisePage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Distribuicao por raca */}
+        {/* Distribuição por raça */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Distribuicao por raca</CardTitle>
+            <CardTitle className="text-sm font-medium">Distribuição por raça</CardTitle>
           </CardHeader>
           <CardContent>
             {racaData.length === 0 ? (
@@ -186,10 +186,10 @@ export function AnalisePage() {
           </CardContent>
         </Card>
 
-        {/* Distribuicao por sexo */}
+        {/* Distribuição por sexo */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Distribuicao por sexo</CardTitle>
+            <CardTitle className="text-sm font-medium">Distribuição por sexo</CardTitle>
           </CardHeader>
           <CardContent>
             {sexoData.length === 0 ? (

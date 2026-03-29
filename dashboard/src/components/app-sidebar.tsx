@@ -22,13 +22,13 @@ import {
 
 const NAV_ITEMS = [
   { title: "Dashboard", icon: BarChart3, path: "/" },
-  { title: "Leiloes", icon: ClipboardList, path: "/leiloes" },
-  { title: "Analise", icon: LineChart, path: "/analise" },
+  { title: "Leilões", icon: ClipboardList, path: "/leiloes" },
+  { title: "Análise", icon: LineChart, path: "/analise" },
   { title: "Ao Vivo", icon: Radio, path: "/ao-vivo" },
 ];
 
 const FOOTER_ITEMS = [
-  { title: "Configuracoes", icon: Settings, path: "/config" },
+  { title: "Configurações", icon: Settings, path: "/config" },
 ];
 
 export function AppSidebar() {
@@ -49,7 +49,7 @@ export function AppSidebar() {
                 <Beef className="size-4" />
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold text-sm">Leilao Inteligente</span>
+                <span className="font-semibold text-sm">Leilão Inteligente</span>
                 <span className="text-xs text-muted-foreground">v0.1.0</span>
               </div>
             </SidebarMenuButton>

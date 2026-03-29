@@ -49,7 +49,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           onValueChange={(v) => setFiltro("raca", v === "todas" ? undefined : v)}
         >
           <SelectTrigger className="w-[130px] h-8 text-xs">
-            <SelectValue placeholder="Raca" />
+            <SelectValue placeholder="Raça" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas</SelectItem>
@@ -133,7 +133,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           onValueChange={(v) => setFiltro("dias", Number(v))}
         >
           <SelectTrigger className="w-[110px] h-8 text-xs">
-            <SelectValue placeholder="Periodo" />
+            <SelectValue placeholder="Período" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="30">30 dias</SelectItem>
@@ -185,7 +185,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           }}
         >
           <SelectTrigger className="w-[140px] h-8 text-xs">
-            <SelectValue placeholder="Faixa preco" />
+            <SelectValue placeholder="Faixa preço" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos</SelectItem>
@@ -226,10 +226,10 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             onValueChange={(v) => setFiltro("leilao_id", v === "todos" ? undefined : Number(v))}
           >
             <SelectTrigger className="w-[140px] h-8 text-xs">
-              <SelectValue placeholder="Leilao" />
+              <SelectValue placeholder="Leilão" />
             </SelectTrigger>
             <SelectContent position="popper" side="bottom" align="start" className="min-w-[350px]">
-              <SelectItem value="todos">Todos leiloes</SelectItem>
+              <SelectItem value="todos">Todos leilões</SelectItem>
               {opcoes.leiloes.map((l) => (
                 <SelectItem key={l.id} value={String(l.id)} className="text-xs">
                   {limparTituloLeilao(l.titulo)}
@@ -248,8 +248,8 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="padrao">Mais recente</SelectItem>
-            <SelectItem value="preco_asc">Preco ↑</SelectItem>
-            <SelectItem value="preco_desc">Preco ↓</SelectItem>
+            <SelectItem value="preco_asc">Preço ↑</SelectItem>
+            <SelectItem value="preco_desc">Preço ↓</SelectItem>
             <SelectItem value="qtd_desc">Maior qtd</SelectItem>
           </SelectContent>
         </Select>

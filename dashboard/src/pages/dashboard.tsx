@@ -24,7 +24,7 @@ export function DashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          Analise de precos de gado em leiloes
+          Análise de preços de gado em leilões
         </p>
       </div>
 

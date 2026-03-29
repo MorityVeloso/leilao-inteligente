@@ -5,9 +5,9 @@ export function ConfigPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Configuracoes</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Configurações</h1>
         <p className="text-sm text-muted-foreground">
-          Canais monitorados e parametros de processamento
+          Canais monitorados e parâmetros de processamento
         </p>
       </div>
 
@@ -16,7 +16,7 @@ export function ConfigPage() {
           <Settings className="h-12 w-12 mb-4 opacity-30" />
           <p className="text-lg font-medium">Em breve</p>
           <p className="text-sm mt-1">
-            Configuracao de canais YouTube, API key e intervalos
+            Configuração de canais YouTube, API key e intervalos
           </p>
         </CardContent>
       </Card>
