@@ -24,10 +24,7 @@ export function TendenciaChart({ filtros }: TendenciaChartProps) {
   if (data.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-medium">Tendência de preço</CardTitle>
-        </CardHeader>
-        <CardContent className="flex items-center justify-center h-[200px] text-muted-foreground">
+        <CardContent className="flex items-center justify-center h-[80px] text-xs text-muted-foreground">
           Processe mais leilões para ver a tendência
         </CardContent>
       </Card>
@@ -41,11 +38,9 @@ export function TendenciaChart({ filtros }: TendenciaChartProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-sm font-medium">Tendência de preço</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={250}>
+      <CardContent className="pt-3 pb-2 px-3">
+        <p className="text-[11px] font-medium text-muted-foreground mb-2">Tendência de preço</p>
+        <ResponsiveContainer width="100%" height={140}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
             <XAxis dataKey="dataFormatada" className="text-xs" />

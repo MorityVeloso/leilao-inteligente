@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api, type Filtros } from "@/lib/api";
 
 function formatBRL(value: number | null): string {
@@ -20,23 +20,20 @@ export function MetricasCards({ filtros }: MetricasCardsProps) {
 
   if (isError) {
     return (
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="col-span-2">
-          <CardContent className="py-6 text-center text-sm text-destructive">
-            Erro ao carregar métricas
-          </CardContent>
-        </Card>
-      </div>
+      <Card>
+        <CardContent className="py-4 text-center text-sm text-destructive">
+          Erro ao carregar métricas
+        </CardContent>
+      </Card>
     );
   }
 
   if (isLoading || !data) {
     return (
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="animate-pulse">
-            <CardHeader className="pb-2"><div className="h-4 bg-muted rounded w-20" /></CardHeader>
-            <CardContent><div className="h-8 bg-muted rounded w-32" /></CardContent>
+          <Card key={i} className="animate-pulse py-2">
+            <CardContent className="px-3"><div className="h-6 bg-muted rounded w-24" /></CardContent>
           </Card>
         ))}
       </div>
@@ -46,57 +43,57 @@ export function MetricasCards({ filtros }: MetricasCardsProps) {
   const tendencia = data.tendencia_percentual;
 
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Média</CardTitle>
-          <DollarSign className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatBRL(data.media)}</div>
-          <p className="text-xs text-muted-foreground">{data.total_lotes} lotes</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Mínimo</CardTitle>
-          <ArrowDown className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatBRL(data.minimo)}</div>
-          <p className="text-xs text-muted-foreground">{data.total_cabecas} cabeças</p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Máximo</CardTitle>
-          <ArrowUp className="h-4 w-4 text-muted-foreground" />
-        </CardHeader>
-        <CardContent>
-          <div className="text-2xl font-bold">{formatBRL(data.maximo)}</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Tendência</CardTitle>
-          {tendencia !== null && tendencia >= 0 ? (
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          ) : (
-            <TrendingDown className="h-4 w-4 text-red-500" />
-          )}
-        </CardHeader>
-        <CardContent>
-          <div className={`text-2xl font-bold ${
-            tendencia !== null
-              ? tendencia >= 0 ? "text-green-500" : "text-red-500"
-              : ""
-          }`}>
-            {tendencia !== null ? `${tendencia > 0 ? "+" : ""}${tendencia}%` : "—"}
+    <div className="grid grid-cols-2 gap-2">
+      <Card className="py-2">
+        <CardContent className="flex items-center justify-between px-3">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Média</p>
+            <p className="text-sm font-bold">{formatBRL(data.media)}</p>
+            <p className="text-[10px] text-muted-foreground">{data.total_lotes} lotes</p>
           </div>
-          <p className="text-xs text-muted-foreground">vs período anterior</p>
+          <DollarSign className="h-3 w-3 text-muted-foreground" />
+        </CardContent>
+      </Card>
+
+      <Card className="py-2">
+        <CardContent className="flex items-center justify-between px-3">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Mínimo</p>
+            <p className="text-sm font-bold">{formatBRL(data.minimo)}</p>
+            <p className="text-[10px] text-muted-foreground">{data.total_cabecas} cabeças</p>
+          </div>
+          <ArrowDown className="h-3 w-3 text-muted-foreground" />
+        </CardContent>
+      </Card>
+
+      <Card className="py-2">
+        <CardContent className="flex items-center justify-between px-3">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Máximo</p>
+            <p className="text-sm font-bold">{formatBRL(data.maximo)}</p>
+          </div>
+          <ArrowUp className="h-3 w-3 text-muted-foreground" />
+        </CardContent>
+      </Card>
+
+      <Card className="py-2">
+        <CardContent className="flex items-center justify-between px-3">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Tendência</p>
+            <p className={`text-sm font-bold ${
+              tendencia !== null
+                ? tendencia >= 0 ? "text-green-500" : "text-red-500"
+                : ""
+            }`}>
+              {tendencia !== null ? `${tendencia > 0 ? "+" : ""}${tendencia}%` : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground">vs período anterior</p>
+          </div>
+          {tendencia !== null && tendencia >= 0 ? (
+            <TrendingUp className="h-3 w-3 text-green-500" />
+          ) : (
+            <TrendingDown className="h-3 w-3 text-red-500" />
+          )}
         </CardContent>
       </Card>
     </div>

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { MapPin, Home } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api, type Filtros } from "@/lib/api";
 
 function formatBRL(value: number): string {
@@ -22,26 +22,26 @@ export function Paineis({ filtros }: PaineisProps) {
   });
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="grid grid-cols-2 gap-2">
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2">
-          <MapPin className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-sm font-medium">Por Região</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-3 pb-2 px-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <MapPin className="h-3 w-3 text-muted-foreground" />
+            <p className="text-[11px] font-medium text-muted-foreground">Por Região</p>
+          </div>
           {regioes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem dados</p>
+            <p className="text-[11px] text-muted-foreground">Sem dados</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-1.5">
               {regioes.map((r) => (
                 <div key={r.estado} className="flex items-center justify-between">
                   <div>
-                    <span className="font-semibold">{r.estado}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
+                    <span className="text-xs font-semibold">{r.estado}</span>
+                    <span className="text-[10px] text-muted-foreground ml-1">
                       ({r.lotes} lotes)
                     </span>
                   </div>
-                  <span className="font-mono text-sm">{formatBRL(r.media)}</span>
+                  <span className="font-mono text-[11px]">{formatBRL(r.media)}</span>
                 </div>
               ))}
             </div>
@@ -50,24 +50,24 @@ export function Paineis({ filtros }: PaineisProps) {
       </Card>
 
       <Card>
-        <CardHeader className="flex flex-row items-center gap-2">
-          <Home className="h-4 w-4 text-muted-foreground" />
-          <CardTitle className="text-sm font-medium">Melhores Fazendas</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-3 pb-2 px-3">
+          <div className="flex items-center gap-1.5 mb-2">
+            <Home className="h-3 w-3 text-muted-foreground" />
+            <p className="text-[11px] font-medium text-muted-foreground">Melhores Fazendas</p>
+          </div>
           {fazendas.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Sem dados</p>
+            <p className="text-[11px] text-muted-foreground">Sem dados</p>
           ) : (
-            <div className="space-y-3">
-              {fazendas.slice(0, 8).map((f) => (
+            <div className="space-y-1">
+              {fazendas.slice(0, 6).map((f) => (
                 <div key={f.fazenda} className="flex items-center justify-between">
                   <div>
-                    <span className="font-semibold text-sm">{f.fazenda}</span>
-                    <span className="text-xs text-muted-foreground ml-2">
+                    <span className="text-[11px] font-semibold">{f.fazenda}</span>
+                    <span className="text-[9px] text-muted-foreground ml-1">
                       ({f.lotes}x, {f.cabecas} cab.)
                     </span>
                   </div>
-                  <span className="font-mono text-sm">{formatBRL(f.media)}</span>
+                  <span className="font-mono text-[11px]">{formatBRL(f.media)}</span>
                 </div>
               ))}
             </div>
