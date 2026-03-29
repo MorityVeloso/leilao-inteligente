@@ -15,6 +15,7 @@ from leilao_inteligente.pipeline.processor import (
     _dedup_lotes_espelhados,
     _identificar_janelas_arrematacao,
     _pegar_ultima_aparicao_lcf,
+    _valor_mais_frequente,
     consolidar_lotes,
     selecionar_frames_visuais,
 )
@@ -83,6 +84,32 @@ def _consolidado(
         frames_analisados=frames,
         confianca_media=0.9,
     )
+
+
+# ===========================================================================
+# _valor_mais_frequente
+# ===========================================================================
+
+
+class TestValorMaisFrequente:
+    def test_todos_none(self):
+        assert _valor_mais_frequente([None, None]) is None
+
+    def test_lista_vazia(self):
+        assert _valor_mais_frequente([]) is None
+
+    def test_um_valor(self):
+        assert _valor_mais_frequente(["JULIANA"]) == "JULIANA"
+
+    def test_ignora_none_retorna_unico(self):
+        assert _valor_mais_frequente([None, "JULIANA", None]) == "JULIANA"
+
+    def test_retorna_mais_frequente(self):
+        assert _valor_mais_frequente([None, "JULIANA", "VITORIA", "JULIANA"]) == "JULIANA"
+
+    def test_empate_retorna_qualquer(self):
+        resultado = _valor_mais_frequente(["A", "B"])
+        assert resultado in ("A", "B")
 
 
 # ===========================================================================

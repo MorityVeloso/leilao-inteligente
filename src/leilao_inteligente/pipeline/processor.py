@@ -26,6 +26,17 @@ LOTE_FRAMES_DIR = DATA_DIR / "lote_frames"
 JANELA_ARREMATACAO_SEGUNDOS = 15
 
 
+def _valor_mais_frequente(valores: list[str | None]) -> str | None:
+    """Retorna o valor nao-None mais frequente de uma lista, ou None."""
+    contagem: dict[str, int] = {}
+    for v in valores:
+        if v is not None:
+            contagem[v] = contagem.get(v, 0) + 1
+    if not contagem:
+        return None
+    return max(contagem, key=contagem.get)  # type: ignore[arg-type]
+
+
 # Registro que associa um LoteExtraido ao seu frame_path original
 class LoteComFrame:
     def __init__(self, lote: LoteExtraido, frame_path: Path):
@@ -136,6 +147,15 @@ def consolidar_lotes(
         if primeiro.quantidade > 0 and preco_final > 0:
             preco_por_cabeca = preco_final / primeiro.quantidade
 
+        # Pegar fazenda e condicao mais frequente entre todos os frames (nao so o primeiro)
+        # O primeiro frame muitas vezes nao tem fazenda porque o overlay ainda esta carregando
+        fazenda_final = _valor_mais_frequente(
+            [f.lote.fazenda_vendedor for f in frames_com_preco]
+        )
+        condicao_final = _valor_mais_frequente(
+            [f.lote.condicao for f in frames_com_preco]
+        )
+
         # Selecionar e salvar frames visuais (4 melhores, corpo inteiro do gado)
         # Usa TODOS os frames do lote (incluindo preco 0) pra ter mais opcoes visuais
         todos_frames_lote = [f for f in frames_lote]
@@ -157,7 +177,7 @@ def consolidar_lotes(
             quantidade=primeiro.quantidade,
             raca=primeiro.raca,
             sexo=primeiro.sexo,
-            condicao=primeiro.condicao,
+            condicao=condicao_final,
             idade_meses=primeiro.idade_meses,
             pelagem=primeiro.pelagem,
             preco_inicial=preco_inicial,
@@ -165,7 +185,7 @@ def consolidar_lotes(
             preco_por_cabeca=preco_por_cabeca,
             local_cidade=primeiro.local_cidade,
             local_estado=primeiro.local_estado,
-            fazenda_vendedor=primeiro.fazenda_vendedor,
+            fazenda_vendedor=fazenda_final,
             timestamp_inicio=primeiro.timestamp_frame,
             timestamp_fim=ultimo.timestamp_frame,
             timestamp_video_inicio=primeiro.timestamp_video,
