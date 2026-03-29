@@ -53,6 +53,7 @@ def salvar_leilao(
                 quantidade=lote_data.quantidade,
                 raca=lote_data.raca,
                 sexo=lote_data.sexo,
+                condicao=lote_data.condicao,
                 idade_meses=lote_data.idade_meses,
                 pelagem=lote_data.pelagem,
                 preco_inicial=lote_data.preco_inicial,

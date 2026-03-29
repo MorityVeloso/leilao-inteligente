@@ -14,6 +14,10 @@ class LoteExtraido(BaseModel):
     quantidade: int = Field(ge=1, le=500, description="Quantidade de animais")
     raca: str = Field(min_length=2, max_length=50, description="Raca do gado")
     sexo: Literal["macho", "femea", "misto"] = Field(description="Sexo do lote")
+    condicao: str | None = Field(
+        default=None, max_length=30,
+        description="Condicao reprodutiva: parida, prenhe, solteira, desmamada",
+    )
     idade_meses: int | None = Field(
         default=None, ge=1, le=120, description="Idade em meses"
     )
@@ -46,6 +50,7 @@ class LoteConsolidado(BaseModel):
     quantidade: int
     raca: str
     sexo: Literal["macho", "femea", "misto"]
+    condicao: str | None = None
     idade_meses: int | None = None
     pelagem: str | None = None
     preco_inicial: Decimal

@@ -35,6 +35,7 @@ export interface Lote {
   quantidade: number;
   raca: string;
   sexo: string;
+  condicao: string | null;
   idade_meses: number | null;
   pelagem: string | null;
   preco_inicial: number | null;

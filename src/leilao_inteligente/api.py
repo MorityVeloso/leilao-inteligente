@@ -199,6 +199,7 @@ def _lote_to_dict(lote: Lote, session) -> dict:
         "quantidade": lote.quantidade,
         "raca": lote.raca,
         "sexo": lote.sexo,
+        "condicao": lote.condicao,
         "idade_meses": lote.idade_meses,
         "pelagem": lote.pelagem,
         "preco_inicial": float(lote.preco_inicial) if lote.preco_inicial else None,

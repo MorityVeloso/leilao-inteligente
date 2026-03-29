@@ -78,6 +78,30 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     if isinstance(cidade, str):
         resultado["local_cidade"] = cidade.strip().title()
 
+    # Normalizar condicao reprodutiva
+    condicao = resultado.get("condicao")
+    if isinstance(condicao, str):
+        condicao_lower = condicao.lower().strip()
+        mapa_condicao = {
+            "parida": "parida",
+            "paridas": "parida",
+            "com cria": "parida",
+            "com cria ao pe": "parida",
+            "prenhe": "prenhe",
+            "prenhes": "prenhe",
+            "prenha": "prenhe",
+            "gestante": "prenhe",
+            "solteira": "solteira",
+            "solteiras": "solteira",
+            "vazia": "solteira",
+            "desmamada": "desmamada",
+            "desmamadas": "desmamada",
+            "desmamado": "desmamada",
+        }
+        resultado["condicao"] = mapa_condicao.get(condicao_lower, condicao_lower)
+    elif condicao is None:
+        resultado["condicao"] = None
+
     # Normalizar pelagem
     pelagem = resultado.get("pelagem")
     if isinstance(pelagem, str):

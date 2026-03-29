@@ -103,7 +103,14 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                       </TableCell>
                       <TableCell className="font-mono font-bold">{lote.lote_numero}</TableCell>
                       <TableCell className="text-right">{lote.quantidade}</TableCell>
-                      <TableCell>{lote.raca}</TableCell>
+                      <TableCell>
+                        {lote.raca}
+                        {lote.condicao && (
+                          <Badge variant="outline" className="ml-1.5 text-[10px] px-1 py-0">
+                            {lote.condicao}
+                          </Badge>
+                        )}
+                      </TableCell>
                       <TableCell>{lote.sexo === "macho" ? "M" : lote.sexo === "femea" ? "F" : "Misto"}</TableCell>
                       <TableCell className="text-right">
                         {lote.idade_meses ? `${lote.idade_meses}m` : "—"}

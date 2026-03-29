@@ -157,6 +157,7 @@ def consolidar_lotes(
             quantidade=primeiro.quantidade,
             raca=primeiro.raca,
             sexo=primeiro.sexo,
+            condicao=primeiro.condicao,
             idade_meses=primeiro.idade_meses,
             pelagem=primeiro.pelagem,
             preco_inicial=preco_inicial,

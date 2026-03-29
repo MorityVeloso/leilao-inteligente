@@ -26,6 +26,7 @@ Retorne APENAS um JSON válido neste formato, sem markdown:
     "quantidade": 35,
     "raca": "Nelore",
     "sexo": "macho",
+    "condicao": "parida",
     "idade_meses": 12,
     "pelagem": null,
     "preco_lance": 3290.00,
@@ -39,8 +40,9 @@ Retorne APENAS um JSON válido neste formato, sem markdown:
 Regras:
 - lote_numero: string exata do overlay ("00", "0005", "001A", "55A")
 - quantidade: número de animais
-- raca: Nelore, Angus, Cruzado, Anelorado, Guzera, Senepol, etc
+- raca: Nelore, Angus, Cruzado, Anelorado, Guzera, Senepol, etc (apenas a raça, sem condição reprodutiva)
 - sexo: "macho", "femea" ou "misto" (sem acento)
+- condicao: condição reprodutiva da fêmea. Valores: "parida" (com bezerro/cria ao pé), "prenhe" (gestante), "solteira" (sem cria nem gestação), "desmamada". null se macho ou não informado. Extrair da descrição do lote (ex: "2 NELORE PARIDA - 36 M" → condicao: "parida")
 - idade_meses: idade em meses, null se não visível
 - pelagem: null (não visível no recorte)
 - preco_lance: número sem R$ ou pontos de milhar. 0 se não visível

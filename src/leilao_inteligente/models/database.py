@@ -59,6 +59,7 @@ class Lote(Base):
     quantidade: Mapped[int] = mapped_column(Integer)
     raca: Mapped[str] = mapped_column(String(50))
     sexo: Mapped[str] = mapped_column(String(10))
+    condicao: Mapped[str | None] = mapped_column(String(30), nullable=True)
     idade_meses: Mapped[int | None] = mapped_column(Integer, nullable=True)
     pelagem: Mapped[str | None] = mapped_column(String(50), nullable=True)
     preco_inicial: Mapped[Decimal] = mapped_column(Numeric(10, 2))

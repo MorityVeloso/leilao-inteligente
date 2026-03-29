@@ -74,6 +74,36 @@ class TestNormalizarDados:
         assert resultado["timestamp_video"].year == 2026
         assert resultado["timestamp_video"].hour == 20
 
+    def test_normaliza_condicao_parida(self):
+        dados = {"condicao": "PARIDA"}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] == "parida"
+
+    def test_normaliza_condicao_com_cria(self):
+        dados = {"condicao": "Com Cria"}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] == "parida"
+
+    def test_normaliza_condicao_prenhe(self):
+        dados = {"condicao": "Prenha"}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] == "prenhe"
+
+    def test_normaliza_condicao_solteira(self):
+        dados = {"condicao": "Vazia"}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] == "solteira"
+
+    def test_normaliza_condicao_desmamada(self):
+        dados = {"condicao": "Desmamadas"}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] == "desmamada"
+
+    def test_normaliza_condicao_none(self):
+        dados = {"condicao": None}
+        resultado = normalizar_dados(dados)
+        assert resultado["condicao"] is None
+
 
 class TestValidarLote:
     def test_valida_lote_correto(self, dados_lote_valido, timestamp_fixture):
