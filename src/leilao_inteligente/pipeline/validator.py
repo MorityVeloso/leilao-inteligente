@@ -102,6 +102,11 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     elif condicao is None:
         resultado["condicao"] = None
 
+    # Condicao reprodutiva so se aplica a femeas
+    sexo = resultado.get("sexo")
+    if isinstance(sexo, str) and sexo.lower().strip() in ("macho", "machos"):
+        resultado["condicao"] = None
+
     # Normalizar pelagem
     pelagem = resultado.get("pelagem")
     if isinstance(pelagem, str):
