@@ -1,6 +1,17 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { CalendarDays, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -30,6 +41,68 @@ interface FiltroBarProps {
   setFaixaQtd: (min?: number, max?: number) => void;
   limpar: () => void;
   tags: { key: keyof Filtros; label: string }[];
+}
+
+function PeriodoPersonalizado({
+  dataInicio,
+  dataFim,
+  onAplicar,
+}: {
+  dataInicio?: string;
+  dataFim?: string;
+  onAplicar: (inicio: string, fim: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [inicio, setInicio] = useState(dataInicio ?? "");
+  const [fim, setFim] = useState(dataFim ?? "");
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <button className="flex items-center gap-1 h-8 px-2 rounded-md border text-xs text-muted-foreground hover:bg-muted transition-colors">
+            <CalendarDays className="h-3.5 w-3.5" />
+          </button>
+        }
+      />
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Período personalizado</DialogTitle>
+          <DialogDescription>Selecione a data inicial e final</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 py-2">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Data inicial</label>
+            <Input
+              type="date"
+              value={inicio}
+              onChange={(e) => setInicio(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium">Data final</label>
+            <Input
+              type="date"
+              value={fim}
+              onChange={(e) => setFim(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            size="sm"
+            disabled={!inicio || !fim}
+            onClick={() => {
+              onAplicar(inicio, fim);
+              setOpen(false);
+            }}
+          >
+            Aplicar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, setFaixaQtd, limpar, tags }: FiltroBarProps) {
@@ -130,13 +203,9 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         )}
 
         <Select
-          value={filtros.data_inicio !== undefined ? "custom" : String(filtros.dias ?? 60)}
+          value={filtros.data_inicio ? "custom" : String(filtros.dias ?? 60)}
           onValueChange={(v) => {
-            if (v === "custom") {
-              setFiltro("dias", undefined);
-              setFiltro("data_inicio", "");
-              setFiltro("data_fim", "");
-            } else {
+            if (v !== "custom") {
               setFiltro("data_inicio", undefined);
               setFiltro("data_fim", undefined);
               setFiltro("dias", Number(v));
@@ -144,7 +213,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           }}
         >
           <SelectTrigger className="w-[130px] h-8 text-xs">
-            <SelectValue placeholder="Período" />
+            <SelectValue placeholder="Período">
+              {filtros.data_inicio && filtros.data_fim
+                ? `${new Date(filtros.data_inicio + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${new Date(filtros.data_fim + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}`
+                : undefined}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="30">30 dias</SelectItem>
@@ -152,27 +225,18 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             <SelectItem value="90">90 dias</SelectItem>
             <SelectItem value="180">6 meses</SelectItem>
             <SelectItem value="365">1 ano</SelectItem>
-            <SelectItem value="custom">Personalizado</SelectItem>
           </SelectContent>
         </Select>
 
-        {filtros.data_inicio !== undefined && (
-          <>
-            <Input
-              type="date"
-              value={filtros.data_inicio ?? ""}
-              onChange={(e) => setFiltro("data_inicio", e.target.value || undefined)}
-              className="w-[130px] h-8 text-xs"
-            />
-            <span className="text-xs text-muted-foreground self-center">a</span>
-            <Input
-              type="date"
-              value={filtros.data_fim ?? ""}
-              onChange={(e) => setFiltro("data_fim", e.target.value || undefined)}
-              className="w-[130px] h-8 text-xs"
-            />
-          </>
-        )}
+        <PeriodoPersonalizado
+          dataInicio={filtros.data_inicio}
+          dataFim={filtros.data_fim}
+          onAplicar={(inicio, fim) => {
+            setFiltro("dias", undefined);
+            setFiltro("data_inicio", inicio);
+            setFiltro("data_fim", fim);
+          }}
+        />
 
         <Select
           value={filtros.fazenda ?? ""}
