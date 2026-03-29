@@ -40,12 +40,12 @@ export function DashboardPage() {
 
       <div className="flex gap-4">
         {/* Esquerda: Tabela de lotes (maior) */}
-        <div className="w-[58%] min-w-0">
+        <div className="w-[65%] min-w-0">
           <LotesTable filtros={filtros} onPlayVideo={(url, lote) => setVideo({ url, lote })} />
         </div>
 
         {/* Direita: Video + Cards + Tendencia + Paineis */}
-        <div className="w-[42%] min-w-0 space-y-4">
+        <div className="w-[35%] min-w-0 space-y-4">
           {video && (
             <div className="rounded-lg border overflow-hidden bg-black">
               <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">

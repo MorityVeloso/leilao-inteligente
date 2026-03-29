@@ -68,6 +68,7 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-[30px]" />
+                  <TableHead>Data</TableHead>
                   <TableHead>Leilão</TableHead>
                   <TableHead>Cidade</TableHead>
                   <TableHead>Lote</TableHead>
@@ -97,7 +98,12 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                             : <ChevronRight className="h-4 w-4" />
                         )}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[180px] truncate" title={lote.leilao_titulo ?? ""}>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {lote.leilao_data
+                          ? new Date(lote.leilao_data).toLocaleDateString("pt-BR")
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[150px] truncate" title={lote.leilao_titulo ?? ""}>
                         {lote.leilao_titulo
                           ? lote.leilao_titulo.replace(/LEIL[ÃA]O\s*/i, "").replace(/\bLIVE\b.*/i, "").trim()
                           : "—"}
@@ -153,7 +159,7 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
 
                     {expandido === lote.id && lote.frame_paths.length > 0 && (
                       <TableRow key={`${lote.id}-frames`}>
-                        <TableCell colSpan={14} className="bg-muted/30 p-4">
+                        <TableCell colSpan={15} className="bg-muted/30 p-4">
                           <div className="flex gap-3 overflow-x-auto">
                             {lote.frame_paths.map((path, i) => (
                               <img
