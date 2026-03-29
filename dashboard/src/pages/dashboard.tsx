@@ -8,10 +8,11 @@ import { Paineis } from "@/components/paineis";
 import { useFiltros } from "@/hooks/use-filtros";
 
 function youtubeEmbedUrl(watchUrl: string): string {
-  return watchUrl
+  const url = watchUrl
     .replace("watch?v=", "embed/")
     .replace("&t=", "?start=")
     .replace(/s$/, "");
+  return url + (url.includes("?") ? "&autoplay=1" : "?autoplay=1");
 }
 
 export function DashboardPage() {
