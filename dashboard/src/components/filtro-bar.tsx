@@ -263,7 +263,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             <SelectItem value="todos">Todos</SelectItem>
             <SelectItem value="arrematado">Arrematado</SelectItem>
             <SelectItem value="repescagem">Repescagem</SelectItem>
-            <SelectItem value="incerto">Incerto</SelectItem>
+            <SelectItem value="incerto">Sem Disputa</SelectItem>
           </SelectContent>
         </Select>
 

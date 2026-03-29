@@ -25,7 +25,7 @@ function statusBadge(status: string) {
     case "repescagem":
       return <Badge className="bg-red-500/10 text-red-500 hover:bg-red-500/20 text-[11px]">Repescagem</Badge>;
     default:
-      return <Badge variant="secondary" className="text-[11px]">Incerto</Badge>;
+      return <Badge variant="secondary" className="text-[11px]">Sem Disputa</Badge>;
   }
 }
 
