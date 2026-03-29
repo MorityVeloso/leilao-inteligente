@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 FRAME_WIDTH = 640
 TOPO_PERCENT = 15   # 15% superior (logos, cidade, hora)
-BASE_PERCENT = 50   # 50% inferior (lote, descrição, preço, fazenda)
+BASE_PERCENT = 55   # 55% inferior (lote, descrição, preço, fazenda)
 MAX_PARALELO = 20
 CACHE_DIR = DATA_DIR / "gemini_cache"
 
