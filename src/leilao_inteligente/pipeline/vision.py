@@ -62,11 +62,25 @@ _client: genai.Client | None = None
 
 
 def _get_client() -> genai.Client:
-    """Inicializa e retorna o client Gemini (singleton)."""
+    """Inicializa e retorna o client Gemini (singleton).
+
+    Suporta dois backends:
+    - aistudio: usa API key (GEMINI_API_KEY). Limite de 10k RPD.
+    - vertex: usa Google Cloud (GCP_PROJECT_ID). Pay-as-you-go, sem limite fixo.
+    """
     global _client
     if _client is None:
         settings = get_settings()
-        _client = genai.Client(api_key=settings.gemini_api_key)
+        if settings.gemini_backend == "vertex":
+            _client = genai.Client(
+                vertexai=True,
+                project=settings.gcp_project_id,
+                location=settings.gcp_location,
+            )
+            logger.info("Gemini via Vertex AI (projeto=%s, regiao=%s)", settings.gcp_project_id, settings.gcp_location)
+        else:
+            _client = genai.Client(api_key=settings.gemini_api_key)
+            logger.info("Gemini via AI Studio")
     return _client
 
 

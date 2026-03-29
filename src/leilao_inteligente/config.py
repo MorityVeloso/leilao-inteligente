@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     )
 
     # Gemini API
-    gemini_api_key: str = Field(description="Chave da API Gemini")
+    gemini_api_key: str = Field(default="", description="Chave da API Gemini (AI Studio)")
+    gemini_backend: str = Field(default="aistudio", description="Backend: 'aistudio' ou 'vertex'")
+    gcp_project_id: str = Field(default="", description="ID do projeto GCP (necessario para Vertex AI)")
+    gcp_location: str = Field(default="us-central1", description="Regiao GCP para Vertex AI")
 
     # Processamento
     frame_interval_seconds: int = Field(default=5, ge=1, le=60)
