@@ -118,7 +118,16 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
         fazenda = fazenda.strip()
         if fazenda.upper().startswith("RECINTO "):
             fazenda = fazenda[8:]
-        resultado["fazenda_vendedor"] = fazenda.strip().upper()
+        fazenda = fazenda.strip().upper()
+
+        # Correcoes de OCR conhecidas
+        correcoes_fazenda: dict[str, str] = {
+            "TUOLO": "TIJOLO",
+            "TUÓLO": "TIJOLO",
+            "TIJÓLO": "TIJOLO",
+            "BAN": "BRN",
+        }
+        resultado["fazenda_vendedor"] = correcoes_fazenda.get(fazenda, fazenda)
     elif fazenda is None:
         resultado["fazenda_vendedor"] = None
 
