@@ -251,10 +251,10 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", !!filtros.fazenda)}>
             <SelectValue placeholder="Fazenda" />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent position="popper" side="bottom" align="start" className="min-w-[280px]">
             <SelectItem value="todas">Todas</SelectItem>
             {opcoes.fazendas.map((f) => (
-              <SelectItem key={f} value={f}>{f}</SelectItem>
+              <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>
             ))}
           </SelectContent>
         </Select>
