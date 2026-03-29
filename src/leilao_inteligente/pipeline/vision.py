@@ -16,43 +16,46 @@ from leilao_inteligente.config import get_settings, DATA_DIR
 
 logger = logging.getLogger(__name__)
 
-OVERLAY_WIDTH = 420
+FRAME_WIDTH = 640
 MAX_PARALELO = 20
 CACHE_DIR = DATA_DIR / "gemini_cache"
 
-PROMPT_EXTRACAO = """Extraia os dados do overlay deste leilão de gado brasileiro.
+PROMPT_EXTRACAO = """Extraia os dados do overlay deste frame de leilão de gado brasileiro.
+
+O layout do overlay varia entre casas de leilão. Os dados podem estar em qualquer posição
+do frame (topo, centro, inferior, esquerda, direita). Leia todo o frame.
 
 Retorne APENAS um JSON válido neste formato, sem markdown:
 {
-    "lote_numero": "0005",
-    "quantidade": 35,
+    "lote_numero": "12",
+    "quantidade": 25,
     "raca": "Nelore",
-    "sexo": "macho",
-    "condicao": "parida",
-    "idade_meses": 12,
+    "sexo": "femea",
+    "condicao": null,
+    "idade_meses": 16,
     "pelagem": null,
-    "preco_lance": 3290.00,
-    "local_cidade": "Crixás",
+    "preco_lance": 2680.00,
+    "local_cidade": "Rianápolis",
     "local_estado": "GO",
-    "fazenda_vendedor": "FAZ. JULIANA",
-    "timestamp_video": "26/03/2026 20:54:21",
+    "fazenda_vendedor": "SITIO BOA SORTE",
+    "timestamp_video": null,
     "confianca": 0.95
 }
 
 Regras:
-- lote_numero: string exata do overlay ("00", "0005", "001A", "55A")
-- quantidade: número de animais
+- lote_numero: string exata do número do lote no overlay ("12", "0005", "001A")
+- quantidade: número de animais no lote
 - raca: Nelore, Angus, Cruzado, Anelorado, Guzera, Senepol, etc (apenas a raça, sem condição reprodutiva)
-- sexo: "macho", "femea" ou "misto" (sem acento)
-- condicao: condição reprodutiva da fêmea. Valores: "parida" (com bezerro/cria ao pé), "prenhe" (gestante), "solteira" (sem cria nem gestação), "desmamada". null se macho ou não informado. Extrair da descrição do lote (ex: "2 NELORE PARIDA - 36 M" → condicao: "parida")
-- idade_meses: idade em meses, null se não visível
-- pelagem: null (não visível no recorte)
-- preco_lance: número sem R$ ou pontos de milhar. 0 se não visível
-- local_cidade e local_estado (sigla UF 2 letras)
-- fazenda_vendedor: nome da fazenda acima da descrição do gado
-- timestamp_video: data/hora exata do overlay (DD/MM/AAAA HH:MM:SS)
+- sexo: "macho", "femea" ou "misto" (sem acento). Pode aparecer como MACHO(S), FEMEA(S), FÊMEA(S)
+- condicao: condição reprodutiva da fêmea: "parida" (com bezerro/cria ao pé), "prenhe" (gestante), "solteira", "desmamada". null se macho ou não informado
+- idade_meses: converter para meses. "16 MS" = 16, "2 ANOS" = 24, "36 M" = 36. null se não visível
+- pelagem: null se não visível
+- preco_lance: valor em R$ por animal (não por lote). Número sem R$, pontos de milhar ou vírgula. 0 se não visível
+- local_cidade e local_estado (sigla UF 2 letras). Pode estar em qualquer parte do frame
+- fazenda_vendedor: nome do vendedor/fazenda. Pode aparecer como "VENDEDOR:", "FAZ.", ou na faixa acima da descrição
+- timestamp_video: data/hora do overlay (DD/MM/AAAA HH:MM:SS). null se não visível
 - confianca: 0.0 a 1.0
-- Se não for overlay de leilão: {"erro": "nao_e_leilao"}
+- Se não for frame de leilão: {"erro": "nao_e_leilao"}
 - Se não conseguir ler um campo: null
 """
 
@@ -110,28 +113,25 @@ def _cache_set(key: str, dados: dict[str, object]) -> None:
     cache_file.write_text(json.dumps(dados, ensure_ascii=False))
 
 
-# --- Overlay ---
+# --- Frame ---
 
 
-def _recortar_overlay(frame_path: Path, top_percent: int = 0) -> bytes:
-    """Recorta a regiao do overlay (inferior) e redimensiona pra 420p."""
-    if top_percent == 0:
-        top_percent = get_settings().overlay_region_top_percent
+def _preparar_frame(frame_path: Path) -> bytes:
+    """Redimensiona o frame inteiro pra largura padrao (640p).
 
+    Envia o frame completo ao Gemini (sem recorte) para suportar
+    qualquer layout de overlay — o Gemini le a imagem inteira.
+    """
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
 
     h, w = frame.shape[:2]
-    top_cut = int(h * top_percent / 100)
-    overlay = frame[top_cut:, :]
+    if w > FRAME_WIDTH:
+        new_h = int(h * FRAME_WIDTH / w)
+        frame = cv2.resize(frame, (FRAME_WIDTH, new_h), interpolation=cv2.INTER_AREA)
 
-    oh, ow = overlay.shape[:2]
-    new_w = OVERLAY_WIDTH
-    new_h = int(oh * new_w / ow)
-    overlay_resized = cv2.resize(overlay, (new_w, new_h), interpolation=cv2.INTER_AREA)
-
-    _, buf = cv2.imencode(".jpg", overlay_resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return buf.tobytes()
 
 
@@ -196,7 +196,7 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
         raise FileNotFoundError(f"Frame nao encontrado: {frame_path}")
 
     try:
-        overlay_bytes = _recortar_overlay(frame_path)
+        overlay_bytes = _preparar_frame(frame_path)
     except Exception:
         logger.exception("Erro ao recortar overlay: %s", frame_path.name)
         return None
@@ -250,7 +250,7 @@ def extrair_dados_lote(
     # Primeiro: resolver o que ja tem cache (rapido, sem rede)
     for fp in frames:
         try:
-            overlay_bytes = _recortar_overlay(fp)
+            overlay_bytes = _preparar_frame(fp)
             key = _cache_key(overlay_bytes)
             cached = _cache_get(key)
             if cached is not None:
@@ -274,7 +274,7 @@ def extrair_dados_lote(
 
     def _processar_frame(frame_path: Path) -> tuple[Path, dict[str, object] | None]:
         try:
-            overlay_bytes = _recortar_overlay(frame_path)
+            overlay_bytes = _preparar_frame(frame_path)
             key = _cache_key(overlay_bytes)
 
             image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
