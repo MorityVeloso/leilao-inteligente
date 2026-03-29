@@ -557,6 +557,7 @@ def _refinar_lotes(
 
     # Extrair frames de 1s pra cada janela
     todos_frames: list[tuple[str, Path]] = []  # (lote_numero, frame_path)
+    frame_lote_esperado: dict[str, str] = {}  # frame_path.name → lote_numero esperado
 
     for numero, (inicio, fim) in lotes_refinar.items():
         frames = extrair_frames_janela(
@@ -564,6 +565,7 @@ def _refinar_lotes(
         )
         for fp in frames:
             todos_frames.append((numero, fp))
+            frame_lote_esperado[fp.name] = numero
 
     if not todos_frames:
         return []
@@ -576,6 +578,7 @@ def _refinar_lotes(
 
     # Validar e criar LoteComFrame
     novos: list[LoteComFrame] = []
+    descartados = 0
     for frame_path, dados in resultados:
         # Calcular timestamp aproximado
         nome = frame_path.stem  # "refine_1200_0003"
@@ -589,8 +592,23 @@ def _refinar_lotes(
 
         ts = datetime.now(tz=timezone.utc) + timedelta(seconds=ts_seg)
         lote = validar_lote(dados, timestamp_frame=ts)
-        if lote is not None:
-            novos.append(LoteComFrame(lote, frame_path))
+        if lote is None:
+            continue
 
+        # Verificar se o lote extraido corresponde ao esperado
+        # (passada 3 pode capturar frames do lote seguinte apos a arrematacao)
+        esperado = frame_lote_esperado.get(frame_path.name)
+        if esperado is not None and lote.lote_numero != esperado:
+            descartados += 1
+            logger.debug(
+                "Frame %s: lote extraido %s != esperado %s, descartando",
+                frame_path.name, lote.lote_numero, esperado,
+            )
+            continue
+
+        novos.append(LoteComFrame(lote, frame_path))
+
+    if descartados:
+        logger.info("Passada 2: descartados %d frames de lotes diferentes", descartados)
     logger.info("Passada 2: %d registros validos de %d frames", len(novos), len(frame_paths))
     return novos
