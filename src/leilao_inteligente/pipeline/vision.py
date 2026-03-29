@@ -1,5 +1,6 @@
 """Extracao de dados de frames via Gemini Flash Vision."""
 
+import hashlib
 import json
 import logging
 import time
@@ -10,13 +11,14 @@ import cv2
 from google import genai
 from google.genai.types import GenerateContentConfig, Part
 
-from leilao_inteligente.config import get_settings
+from leilao_inteligente.config import get_settings, DATA_DIR
 
 
 logger = logging.getLogger(__name__)
 
 OVERLAY_WIDTH = 420
 MAX_PARALELO = 20
+CACHE_DIR = DATA_DIR / "gemini_cache"
 
 PROMPT_EXTRACAO = """Extraia os dados do overlay deste leilão de gado brasileiro.
 
@@ -68,8 +70,40 @@ def _get_client() -> genai.Client:
     return _client
 
 
-def _recortar_overlay(frame_path: Path, top_percent: int = 70) -> bytes:
+# --- Cache ---
+
+
+def _cache_key(overlay_bytes: bytes) -> str:
+    """Gera chave de cache a partir do hash SHA-256 do overlay."""
+    return hashlib.sha256(overlay_bytes).hexdigest()
+
+
+def _cache_get(key: str) -> dict[str, object] | None:
+    """Busca resultado no cache. Retorna None se nao existe."""
+    cache_file = CACHE_DIR / f"{key}.json"
+    if not cache_file.exists():
+        return None
+    try:
+        return json.loads(cache_file.read_text())
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def _cache_set(key: str, dados: dict[str, object]) -> None:
+    """Salva resultado no cache."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    cache_file = CACHE_DIR / f"{key}.json"
+    cache_file.write_text(json.dumps(dados, ensure_ascii=False))
+
+
+# --- Overlay ---
+
+
+def _recortar_overlay(frame_path: Path, top_percent: int = 0) -> bytes:
     """Recorta a regiao do overlay (inferior) e redimensiona pra 420p."""
+    if top_percent == 0:
+        top_percent = get_settings().overlay_region_top_percent
+
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
@@ -85,6 +119,9 @@ def _recortar_overlay(frame_path: Path, top_percent: int = 70) -> bytes:
 
     _, buf = cv2.imencode(".jpg", overlay_resized, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return buf.tobytes()
+
+
+# --- Gemini ---
 
 
 def _chamar_gemini(client: genai.Client, image_part: Part) -> object:
@@ -136,15 +173,30 @@ def _parse_response(texto: str) -> dict[str, object] | None:
     return dados
 
 
+# --- API publica ---
+
+
 def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
     """Recorta overlay 420p, envia ao Gemini e extrai dados estruturados."""
     if not frame_path.exists():
         raise FileNotFoundError(f"Frame nao encontrado: {frame_path}")
 
+    try:
+        overlay_bytes = _recortar_overlay(frame_path)
+    except Exception:
+        logger.exception("Erro ao recortar overlay: %s", frame_path.name)
+        return None
+
+    # Verificar cache
+    key = _cache_key(overlay_bytes)
+    cached = _cache_get(key)
+    if cached is not None:
+        logger.debug("Cache hit: %s", frame_path.name)
+        return cached
+
     client = _get_client()
 
     try:
-        overlay_bytes = _recortar_overlay(frame_path)
         image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
         response = _chamar_gemini(client, image_part)
     except Exception:
@@ -156,6 +208,7 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
 
     dados = _parse_response(response.text)
     if dados:
+        _cache_set(key, dados)
         logger.debug("Extraido de %s: lote %s", frame_path.name, dados.get("lote_numero"))
     return dados
 
@@ -166,6 +219,9 @@ def extrair_dados_lote(
 ) -> list[tuple[Path, dict[str, object]]]:
     """Extrai dados de multiplos frames em paralelo.
 
+    Usa cache por hash do overlay: se o frame ja foi processado antes,
+    retorna o resultado salvo sem chamar o Gemini.
+
     Args:
         frames: Lista de caminhos de frames.
         callback: Funcao chamada apos cada frame (pra progress bar).
@@ -173,16 +229,46 @@ def extrair_dados_lote(
     Returns:
         Lista de tuplas (frame_path, dados_extraidos) para frames validos.
     """
-    client = _get_client()
     resultados: list[tuple[Path, dict[str, object]]] = []
+    frames_sem_cache: list[Path] = []
+    cache_hits = 0
+
+    # Primeiro: resolver o que ja tem cache (rapido, sem rede)
+    for fp in frames:
+        try:
+            overlay_bytes = _recortar_overlay(fp)
+            key = _cache_key(overlay_bytes)
+            cached = _cache_get(key)
+            if cached is not None:
+                resultados.append((fp, cached))
+                cache_hits += 1
+                if callback:
+                    callback()
+            else:
+                frames_sem_cache.append(fp)
+        except Exception:
+            frames_sem_cache.append(fp)
+
+    if cache_hits:
+        logger.info("Cache: %d hits, %d misses → %d requests ao Gemini", cache_hits, len(frames_sem_cache), len(frames_sem_cache))
+
+    if not frames_sem_cache:
+        return resultados
+
+    # Depois: processar os que nao tem cache em paralelo
+    client = _get_client()
 
     def _processar_frame(frame_path: Path) -> tuple[Path, dict[str, object] | None]:
         try:
             overlay_bytes = _recortar_overlay(frame_path)
+            key = _cache_key(overlay_bytes)
+
             image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
             response = _chamar_gemini(client, image_part)
             if response.text:
                 dados = _parse_response(response.text)
+                if dados:
+                    _cache_set(key, dados)
                 return (frame_path, dados)
             return (frame_path, None)
         except Exception:
@@ -192,7 +278,7 @@ def extrair_dados_lote(
     with ThreadPoolExecutor(max_workers=MAX_PARALELO) as executor:
         futures = {
             executor.submit(_processar_frame, fp): fp
-            for fp in frames
+            for fp in frames_sem_cache
         }
 
         for future in as_completed(futures):
