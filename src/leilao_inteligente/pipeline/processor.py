@@ -144,6 +144,13 @@ def consolidar_lotes(
         if video_id and frames_visuais:
             frame_paths_salvos = salvar_frames_visuais(video_id, numero, frames_visuais)
 
+        # Calcular segundo_video a partir do primeiro frame
+        segundo_video_val: int | None = None
+        try:
+            segundo_video_val = int(frame_timestamp(frames_com_preco[0].frame_path, 5))
+        except (ValueError, IndexError):
+            pass
+
         consolidado = LoteConsolidado(
             lote_numero=primeiro.lote_numero,
             quantidade=primeiro.quantidade,
@@ -166,6 +173,7 @@ def consolidar_lotes(
             aparicoes=aparicoes,
             status=status,
             frame_paths=frame_paths_salvos,
+            segundo_video=segundo_video_val,
         )
         consolidados.append(consolidado)
 

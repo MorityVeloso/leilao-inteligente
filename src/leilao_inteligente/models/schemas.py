@@ -63,6 +63,7 @@ class LoteConsolidado(BaseModel):
     aparicoes: int = Field(default=1, ge=1, description="Vezes que o lote apareceu (2+ = repescagem)")
     status: str = Field(default="incerto", description="arrematado | repescagem | incerto")
     frame_paths: list[str] = Field(default_factory=list, description="Paths dos frames visuais")
+    segundo_video: int | None = Field(default=None, description="Segundo do video YouTube onde o lote aparece")
 
 
 class LeilaoInfo(BaseModel):

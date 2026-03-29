@@ -68,6 +68,7 @@ def salvar_leilao(
                 aparicoes=lote_data.aparicoes,
                 status=lote_data.status,
                 frame_paths="|".join(lote_data.frame_paths) if lote_data.frame_paths else None,
+                segundo_video=lote_data.segundo_video,
             )
             session.add(lote)
 
