@@ -62,7 +62,7 @@ Regras:
 - Se não conseguir ler um campo: null
 """
 
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-2.5-flash-lite"
 
 _client: genai.Client | None = None
 
@@ -159,7 +159,6 @@ def _chamar_gemini(client: genai.Client, image_part: Part) -> object:
                 config=GenerateContentConfig(
                     temperature=0.1,
                     max_output_tokens=1024,
-                    thinking_config={"thinking_budget": 0},
                 ),
             )
         except Exception as e:
