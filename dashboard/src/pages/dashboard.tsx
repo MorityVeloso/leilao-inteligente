@@ -45,7 +45,7 @@ export function DashboardPage() {
         </div>
 
         {/* Direita: Video + Cards + Tendencia + Paineis */}
-        <div className="w-[35%] min-w-0 space-y-2 sticky top-4 max-h-[calc(100vh-6rem)] overflow-y-auto px-px">
+        <div className="w-[35%] min-w-0 space-y-2 sticky top-4 max-h-[calc(100vh-6rem)] overflow-y-auto p-1">
           {video && (
             <div className="rounded-lg border overflow-hidden bg-black">
               <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50">
