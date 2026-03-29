@@ -66,17 +66,22 @@ export function useFiltros() {
 
   const limpar = useCallback(() => setFiltros(INITIAL_FILTROS), []);
 
+  const LABEL_MAP: Record<string, Record<string, string>> = {
+    status: { arrematado: "Arrematado", repescagem: "Repescagem", incerto: "Sem Disputa" },
+    sexo: { macho: "Macho", femea: "Fêmea", misto: "Misto" },
+    condicao: { parida: "Parida", prenhe: "Prenhe", solteira: "Solteira" },
+    ordenar: { preco_asc: "Preço ↑", preco_desc: "Preço ↓", qtd_desc: "Maior qtd" },
+  };
+
   const tags: { key: keyof Filtros; label: string }[] = [];
 
   for (const [k, v] of Object.entries(filtros)) {
     if (v === undefined || k === "dias" || k === "data_inicio" || k === "data_fim" || k === "idade_min" || k === "idade_max" || k === "preco_min" || k === "preco_max" || k === "qtd_min" || k === "qtd_max") continue;
     if (k === "leilao_id") {
-      tags.push({ key: k as keyof Filtros, label: `Leilao #${v}` });
-    } else if (k === "ordenar") {
-      const labels: Record<string, string> = { preco_asc: "Preco ↑", preco_desc: "Preco ↓", data_desc: "Mais recente", qtd_desc: "Maior qtd" };
-      tags.push({ key: k as keyof Filtros, label: labels[v as string] ?? String(v) });
+      tags.push({ key: k as keyof Filtros, label: `Leilão #${v}` });
     } else {
-      tags.push({ key: k as keyof Filtros, label: String(v) });
+      const label = LABEL_MAP[k]?.[v as string] ?? String(v);
+      tags.push({ key: k as keyof Filtros, label });
     }
   }
 

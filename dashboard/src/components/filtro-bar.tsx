@@ -105,6 +105,12 @@ function PeriodoPersonalizado({
   );
 }
 
+const ACTIVE_STYLE = "ring-2 ring-green-500/40 border-green-500/50";
+
+function triggerClass(base: string, active: boolean) {
+  return active ? `${base} ${ACTIVE_STYLE}` : base;
+}
+
 export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, setFaixaQtd, limpar, tags }: FiltroBarProps) {
   const { data: opcoes } = useQuery({
     queryKey: ["filtros"],
@@ -122,7 +128,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.raca ?? ""}
           onValueChange={(v) => setFiltro("raca", v === "todas" ? undefined : v)}
         >
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.raca)}>
             <SelectValue placeholder="Raça" />
           </SelectTrigger>
           <SelectContent>
@@ -137,7 +143,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.sexo ?? ""}
           onValueChange={(v) => setFiltro("sexo", v === "todos" ? undefined : v)}
         >
-          <SelectTrigger className="w-[100px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[100px] h-8 text-xs", !!filtros.sexo)}>
             <SelectValue placeholder="Sexo" />
           </SelectTrigger>
           <SelectContent>
@@ -159,7 +165,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             }
           }}
         >
-          <SelectTrigger className="w-[110px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[110px] h-8 text-xs", filtros.idade_min !== undefined)}>
             <SelectValue placeholder="Idade" />
           </SelectTrigger>
           <SelectContent>
@@ -174,7 +180,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.estado ?? ""}
           onValueChange={(v) => setFiltro("estado", v === "todos" ? undefined : v)}
         >
-          <SelectTrigger className="w-[90px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[90px] h-8 text-xs", !!filtros.estado)}>
             <SelectValue placeholder="Estado" />
           </SelectTrigger>
           <SelectContent>
@@ -190,7 +196,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             value={filtros.cidade ?? ""}
             onValueChange={(v) => setFiltro("cidade", v === "todas" ? undefined : v)}
           >
-            <SelectTrigger className="w-[120px] h-8 text-xs">
+            <SelectTrigger className={triggerClass("w-[120px] h-8 text-xs", !!filtros.cidade)}>
               <SelectValue placeholder="Cidade" />
             </SelectTrigger>
             <SelectContent>
@@ -242,7 +248,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.fazenda ?? ""}
           onValueChange={(v) => setFiltro("fazenda", v === "todas" ? undefined : v)}
         >
-          <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", !!filtros.fazenda)}>
             <SelectValue placeholder="Fazenda" />
           </SelectTrigger>
           <SelectContent>
@@ -256,7 +262,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.status ?? ""}
           onValueChange={(v) => setFiltro("status", v === "todos" ? undefined : v)}
         >
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.status)}>
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
@@ -271,7 +277,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.condicao ?? ""}
           onValueChange={(v) => setFiltro("condicao", v === "todas" ? undefined : v)}
         >
-          <SelectTrigger className="w-[120px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[120px] h-8 text-xs", !!filtros.condicao)}>
             <SelectValue placeholder="Condição" />
           </SelectTrigger>
           <SelectContent>
@@ -293,7 +299,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             }
           }}
         >
-          <SelectTrigger className="w-[140px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", filtros.preco_min !== undefined)}>
             <SelectValue placeholder="Faixa preço" />
           </SelectTrigger>
           <SelectContent>
@@ -317,7 +323,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             }
           }}
         >
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", filtros.qtd_min !== undefined)}>
             <SelectValue placeholder="Quantidade" />
           </SelectTrigger>
           <SelectContent>
@@ -334,7 +340,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             value={filtros.leilao_id !== undefined ? String(filtros.leilao_id) : ""}
             onValueChange={(v) => setFiltro("leilao_id", v === "todos" ? undefined : Number(v))}
           >
-            <SelectTrigger className="w-[140px] h-8 text-xs">
+            <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", filtros.leilao_id !== undefined)}>
               <SelectValue placeholder="Leilão" />
             </SelectTrigger>
             <SelectContent position="popper" side="bottom" align="start" className="min-w-[350px]">
@@ -352,7 +358,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           value={filtros.ordenar ?? ""}
           onValueChange={(v) => setFiltro("ordenar", v === "padrao" ? undefined : v)}
         >
-          <SelectTrigger className="w-[130px] h-8 text-xs">
+          <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.ordenar)}>
             <SelectValue placeholder="Ordenar" />
           </SelectTrigger>
           <SelectContent>
