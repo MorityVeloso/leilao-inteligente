@@ -63,7 +63,7 @@ export interface FiltrosOpcoes {
   cidades: string[];
   fazendas: string[];
   leiloes: { id: number; titulo: string }[];
-  faixas_idade: { label: string; min: number; max: number }[];
+  idades: number[];
 }
 
 export interface Fazenda {

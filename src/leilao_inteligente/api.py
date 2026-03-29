@@ -57,6 +57,14 @@ def get_filtros():
             for l in session.query(Leilao).order_by(Leilao.processado_em.desc()).all()
         ]
 
+        idades = [
+            i[0] for i in session.query(Lote.idade_meses)
+            .filter(Lote.idade_meses.isnot(None))
+            .distinct()
+            .order_by(Lote.idade_meses)
+            .all()
+        ]
+
         return {
             "racas": racas,
             "sexos": sexos,
@@ -64,13 +72,7 @@ def get_filtros():
             "cidades": cidades,
             "fazendas": fazendas,
             "leiloes": leiloes_list,
-            "faixas_idade": [
-                {"label": "1-8m", "min": 1, "max": 8},
-                {"label": "10-14m", "min": 10, "max": 14},
-                {"label": "15-20m", "min": 15, "max": 20},
-                {"label": "21-36m", "min": 21, "max": 36},
-                {"label": "36m+", "min": 36, "max": 120},
-            ],
+            "idades": idades,
         }
     finally:
         session.close()

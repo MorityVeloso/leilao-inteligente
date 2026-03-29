@@ -90,8 +90,8 @@ export function useFiltros() {
     const fim = filtros.data_fim ? new Date(filtros.data_fim + "T00:00:00").toLocaleDateString("pt-BR") : "?";
     tags.push({ key: "data_inicio", label: `${ini} — ${fim}` });
   }
-  if (filtros.idade_min !== undefined || filtros.idade_max !== undefined) {
-    tags.push({ key: "idade_min", label: `${filtros.idade_min ?? "?"}–${filtros.idade_max ?? "?"}m` });
+  if (filtros.idade_min !== undefined) {
+    tags.push({ key: "idade_min", label: `${filtros.idade_min}m` });
   }
   if (filtros.preco_min !== undefined || filtros.preco_max !== undefined) {
     const min = filtros.preco_min ? `R$${filtros.preco_min.toLocaleString()}` : "?";

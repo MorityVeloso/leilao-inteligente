@@ -155,13 +155,13 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         </Select>
 
         <Select
-          value={filtros.idade_min !== undefined ? `${filtros.idade_min}-${filtros.idade_max}` : ""}
+          value={filtros.idade_min !== undefined ? String(filtros.idade_min) : ""}
           onValueChange={(v) => {
             if (v === "todas") {
               setFaixaIdade(undefined, undefined);
             } else {
-              const faixa = opcoes.faixas_idade.find((f) => `${f.min}-${f.max}` === v);
-              if (faixa) setFaixaIdade(faixa.min, faixa.max);
+              const idade = Number(v);
+              setFaixaIdade(idade, idade);
             }
           }}
         >
@@ -170,8 +170,8 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas</SelectItem>
-            {opcoes.faixas_idade.map((f) => (
-              <SelectItem key={f.label} value={`${f.min}-${f.max}`}>{f.label}</SelectItem>
+            {opcoes.idades.map((i) => (
+              <SelectItem key={i} value={String(i)}>{i}m</SelectItem>
             ))}
           </SelectContent>
         </Select>

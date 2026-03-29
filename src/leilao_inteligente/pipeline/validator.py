@@ -77,7 +77,10 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     # Normalizar raca
     raca = resultado.get("raca")
     if isinstance(raca, str):
-        resultado["raca"] = raca.strip().title()
+        raca = raca.strip().title()
+        # Mestiço, Mestico, Cruzado, Cruzada, etc → Mestiço
+        racas_mesticas = {"Mestico", "Mestiço", "Mestiça", "Cruzado", "Cruzada", "Cruzados", "Cruzadas", "Meio Sangue"}
+        resultado["raca"] = "Mestiço" if raca in racas_mesticas else raca
 
     # Normalizar cidade
     cidade = resultado.get("local_cidade")
