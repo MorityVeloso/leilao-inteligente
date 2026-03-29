@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
   LineChart,
@@ -9,18 +9,17 @@ import {
   Tooltip,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api, type Filtros, type PontoTendencia } from "@/lib/api";
+import { api, type Filtros } from "@/lib/api";
 
 interface TendenciaChartProps {
   filtros: Filtros;
 }
 
 export function TendenciaChart({ filtros }: TendenciaChartProps) {
-  const [data, setData] = useState<PontoTendencia[]>([]);
-
-  useEffect(() => {
-    api.tendencia(filtros).then(setData);
-  }, [filtros]);
+  const { data = [] } = useQuery({
+    queryKey: ["tendencia", filtros],
+    queryFn: () => api.tendencia(filtros),
+  });
 
   if (data.length === 0) {
     return (

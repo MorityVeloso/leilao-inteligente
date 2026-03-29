@@ -73,6 +73,17 @@ export interface Regiao {
   lotes: number;
 }
 
+export interface LeilaoResumo {
+  id: number;
+  titulo: string;
+  canal: string;
+  local_cidade: string | null;
+  local_estado: string | null;
+  total_lotes: number | null;
+  processado_em: string | null;
+  status: string;
+}
+
 export interface PontoTendencia {
   data: string;
   leilao: string;
@@ -113,5 +124,6 @@ export const api = {
   tendencia: (f: Filtros) => fetchJson<PontoTendencia[]>("/api/tendencia", buildParams(f)),
   fazendas: (f: Filtros) => fetchJson<Fazenda[]>("/api/fazendas", buildParams(f)),
   regioes: (f: Filtros) => fetchJson<Regiao[]>("/api/regioes", buildParams(f)),
+  leiloes: () => fetchJson<LeilaoResumo[]>("/api/leiloes"),
   frameUrl: (path: string) => `${API_URL}/api/frame/${path}`,
 };

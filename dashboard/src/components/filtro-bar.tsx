@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -9,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api, type FiltrosOpcoes, type Filtros } from "@/lib/api";
+import { api, type Filtros } from "@/lib/api";
 
 function limparTituloLeilao(titulo: string): string {
   return titulo
@@ -33,11 +32,11 @@ interface FiltroBarProps {
 }
 
 export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, setFaixaQtd, limpar, tags }: FiltroBarProps) {
-  const [opcoes, setOpcoes] = useState<FiltrosOpcoes | null>(null);
-
-  useEffect(() => {
-    api.filtros().then(setOpcoes);
-  }, []);
+  const { data: opcoes } = useQuery({
+    queryKey: ["filtros"],
+    queryFn: () => api.filtros(),
+    staleTime: 60_000,
+  });
 
   if (!opcoes) return null;
 

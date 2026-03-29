@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { MapPin, Home } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api, type Filtros, type Fazenda, type Regiao } from "@/lib/api";
+import { api, type Filtros } from "@/lib/api";
 
 function formatBRL(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -12,13 +12,14 @@ interface PaineisProps {
 }
 
 export function Paineis({ filtros }: PaineisProps) {
-  const [regioes, setRegioes] = useState<Regiao[]>([]);
-  const [fazendas, setFazendas] = useState<Fazenda[]>([]);
-
-  useEffect(() => {
-    api.regioes(filtros).then(setRegioes);
-    api.fazendas(filtros).then(setFazendas);
-  }, [filtros]);
+  const { data: regioes = [] } = useQuery({
+    queryKey: ["regioes", filtros],
+    queryFn: () => api.regioes(filtros),
+  });
+  const { data: fazendas = [] } = useQuery({
+    queryKey: ["fazendas", filtros],
+    queryFn: () => api.fazendas(filtros),
+  });
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

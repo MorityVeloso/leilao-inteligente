@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp, Hash } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { TrendingUp, TrendingDown, DollarSign, ArrowDown, ArrowUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { api, type Filtros, type Metricas } from "@/lib/api";
+import { api, type Filtros } from "@/lib/api";
 
 function formatBRL(value: number | null): string {
   if (value === null) return "—";
@@ -13,13 +13,24 @@ interface MetricasCardsProps {
 }
 
 export function MetricasCards({ filtros }: MetricasCardsProps) {
-  const [data, setData] = useState<Metricas | null>(null);
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["metricas", filtros],
+    queryFn: () => api.metricas(filtros),
+  });
 
-  useEffect(() => {
-    api.metricas(filtros).then(setData);
-  }, [filtros]);
+  if (isError) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="col-span-2">
+          <CardContent className="py-6 text-center text-sm text-destructive">
+            Erro ao carregar metricas
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  if (!data) {
+  if (isLoading || !data) {
     return (
       <div className="grid grid-cols-2 gap-3">
         {[1, 2, 3, 4].map((i) => (

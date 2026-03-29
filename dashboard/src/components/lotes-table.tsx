@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Play } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api, type Filtros, type Lote } from "@/lib/api";
+import { api, type Filtros } from "@/lib/api";
 
 function formatBRL(value: number | null): string {
   if (value === null) return "—";
@@ -34,18 +35,12 @@ interface LotesTableProps {
 }
 
 export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
-  const [lotes, setLotes] = useState<Lote[]>([]);
+  const { data: lotes = [], isLoading: loading, isError } = useQuery({
+    queryKey: ["lotes", filtros],
+    queryFn: () => api.lotes(filtros),
+  });
   const [expandido, setExpandido] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
   const [lightbox, setLightbox] = useState<{ paths: string[]; index: number; lote: string } | null>(null);
-
-  useEffect(() => {
-    setLoading(true);
-    api.lotes(filtros).then((data) => {
-      setLotes(data);
-      setLoading(false);
-    });
-  }, [filtros]);
 
   return (
     <Card>
@@ -55,7 +50,11 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {loading ? (
+        {isError ? (
+          <div className="flex items-center justify-center h-[200px] text-sm text-destructive">
+            Erro ao carregar lotes
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-[200px] text-muted-foreground">
             Carregando...
           </div>

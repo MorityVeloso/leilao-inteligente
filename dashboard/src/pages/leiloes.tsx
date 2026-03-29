@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Play, ExternalLink, MapPin, Calendar } from "lucide-react";
+import { Play, MapPin } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,31 +16,13 @@ import {
 } from "@/components/ui/table";
 import { api } from "@/lib/api";
 
-interface Leilao {
-  id: number;
-  titulo: string;
-  canal: string;
-  local_cidade: string | null;
-  local_estado: string | null;
-  total_lotes: number | null;
-  processado_em: string | null;
-  status: string;
-}
-
 export function LeiloesPage() {
-  const [leiloes, setLeiloes] = useState<Leilao[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: leiloes = [], isLoading: loading } = useQuery({
+    queryKey: ["leiloes"],
+    queryFn: () => api.leiloes(),
+  });
   const [url, setUrl] = useState("");
   const navigate = useNavigate();
-
-  useEffect(() => {
-    fetch("http://localhost:8000/api/leiloes")
-      .then((r) => r.json())
-      .then((data) => {
-        setLeiloes(data);
-        setLoading(false);
-      });
-  }, []);
 
   return (
     <div className="space-y-6">
