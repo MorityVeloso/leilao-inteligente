@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     gemini_backend: str = Field(default="aistudio", description="Backend: 'aistudio' ou 'vertex'")
     gcp_project_id: str = Field(default="", description="ID do projeto GCP (necessario para Vertex AI)")
     gcp_location: str = Field(default="us-central1", description="Regiao GCP para Vertex AI")
+    gcs_bucket: str = Field(default="", description="Bucket GCS para Batch API (ex: leilao-inteligente-batch)")
 
     # Processamento
     frame_interval_seconds: int = Field(default=5, ge=1, le=60)

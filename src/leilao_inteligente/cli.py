@@ -9,7 +9,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 
 from leilao_inteligente.models.schemas import LeilaoInfo
-from leilao_inteligente.pipeline.downloader import obter_info_video, listar_videos_canal
+from leilao_inteligente.pipeline.downloader import obter_info_video, extrair_data_leilao, extrair_local_leilao, listar_videos_canal
 from leilao_inteligente.pipeline.processor import processar_video
 from leilao_inteligente.storage.repository import (
     listar_leiloes,
@@ -41,12 +41,14 @@ def _setup_logging(verbose: bool = False) -> None:
 @app.command()
 def processar(
     url: str = typer.Argument(help="URL do video no YouTube"),
+    batch: bool = typer.Option(False, "--batch", "-b", help="Usar Batch API (50%% desconto, ate 24h). Apenas videos gravados."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Modo verboso"),
 ) -> None:
     """Processa um video gravado de leilao e extrai dados dos lotes."""
     _setup_logging(verbose)
 
-    console.print(f"\n[bold]Processando:[/bold] {url}\n")
+    modo = "[yellow]BATCH[/yellow] (50% desconto)" if batch else "online"
+    console.print(f"\n[bold]Processando:[/bold] {url} ({modo})\n")
 
     try:
         # Obter info do video
@@ -55,17 +57,21 @@ def processar(
         console.print(f"  Canal: {info.get('channel')}")
 
         # Processar
-        lotes = processar_video(url)
+        lotes = processar_video(url, batch=batch)
 
         if not lotes:
             console.print("\n[yellow]Nenhum lote encontrado neste video.[/yellow]")
             return
 
         # Salvar no banco
+        cidade, estado = extrair_local_leilao(info)
         leilao_info = LeilaoInfo(
             canal_youtube=str(info.get("channel", "Desconhecido")),
             url_video=url,
             titulo=str(info.get("title", "Sem titulo")),
+            data_leilao=extrair_data_leilao(info),
+            local_cidade=cidade,
+            local_estado=estado,
         )
         leilao = salvar_leilao(leilao_info, lotes)
 

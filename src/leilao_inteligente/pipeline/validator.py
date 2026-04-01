@@ -47,11 +47,24 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
         except InvalidOperation:
             resultado["preco_lance"] = None
 
-    # Corrigir precos visivelmente truncados (ex: 27 em vez de 2700)
+    # Corrigir precos visivelmente truncados pelo OCR
+    # Ex: overlay mostra "2.700" mas Gemini le "27" ou "270"
+    # Regra: se preco < 500, tentar ×10 e ×100. Usar o que cair na faixa 500-15000.
     preco_val = resultado.get("preco_lance")
     if isinstance(preco_val, (int, float, Decimal)) and 0 < float(preco_val) < 500:
-        resultado["preco_lance"] = Decimal(str(preco_val)) * 100
-        logger.debug("Preco corrigido: %s → %s (provavelmente truncado)", preco_val, resultado["preco_lance"])
+        p = float(preco_val)
+        corrigido = None
+        if 500 <= p * 100 <= 15000:
+            corrigido = Decimal(str(preco_val)) * 100
+        elif 500 <= p * 10 <= 15000:
+            corrigido = Decimal(str(preco_val)) * 10
+        if corrigido:
+            logger.debug("Preço corrigido: %s → %s (truncado pelo OCR)", preco_val, corrigido)
+            resultado["preco_lance"] = corrigido
+        else:
+            # Preco irreparavel (ex: R$50 → nenhuma multiplicacao faz sentido)
+            logger.debug("Preço descartado: %s (irreparável)", preco_val)
+            resultado["preco_lance"] = Decimal("0")
 
     # Normalizar sexo
     sexo = resultado.get("sexo")
@@ -168,6 +181,12 @@ def validar_lote(
         normalizados["timestamp_frame"] = timestamp_frame
     elif "timestamp_frame" not in normalizados:
         normalizados["timestamp_frame"] = datetime.now(tz=timezone.utc)
+
+    # Descartar lote numero "0" (lixo de OCR)
+    lote_num = normalizados.get("lote_numero")
+    if isinstance(lote_num, str) and lote_num.strip("0") == "":
+        logger.debug("Lote numero '%s' descartado (OCR lixo)", lote_num)
+        return None
 
     # Verificar UF
     estado = normalizados.get("local_estado")

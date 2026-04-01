@@ -86,3 +86,30 @@ class Lote(Base):
             f"<Lote(id={self.id}, lote={self.lote_numero}, "
             f"{self.quantidade}x {self.raca} {self.sexo}, status={self.status})>"
         )
+
+
+class Processamento(Base):
+    """Tabela de jobs de processamento (sobrevive a restarts)."""
+
+    __tablename__ = "processamentos"
+
+    id: Mapped[str] = mapped_column(String(20), primary_key=True)
+    url: Mapped[str] = mapped_column(String(500))
+    batch: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(20), default="iniciando")
+    titulo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    lotes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    leilao_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    erro: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "url": self.url,
+            "batch": bool(self.batch),
+            "titulo": self.titulo,
+            "lotes": self.lotes,
+            "leilao_id": self.leilao_id,
+            "erro": self.erro,
+        }

@@ -62,7 +62,7 @@ export interface FiltrosOpcoes {
   estados: string[];
   cidades: string[];
   fazendas: string[];
-  leiloes: { id: number; titulo: string }[];
+  leiloes: { id: number; titulo: string; local_cidade: string | null; local_estado: string | null; data: string | null }[];
   idades: number[];
 }
 
@@ -141,8 +141,8 @@ export interface ComparativoCategoria {
 }
 
 export interface ComparativoCidades {
-  cidade_a: string;
-  cidade_b: string;
+  label_a: string;
+  label_b: string;
   categorias: ComparativoCategoria[];
 }
 
@@ -153,6 +153,34 @@ export interface PontoEvolucao {
   minimo: number;
   maximo: number;
   lotes: number;
+}
+
+export interface RankingPreco {
+  leilao_id: number;
+  media: number;
+  lotes: number;
+}
+
+export interface RankingCategoria {
+  raca: string;
+  sexo: string;
+  condicao: string | null;
+  idade_meses: number;
+  precos: RankingPreco[];
+  spread: number;
+}
+
+export interface RankingLeilao {
+  id: number;
+  titulo: string;
+  cidade: string | null;
+  estado: string | null;
+  data: string | null;
+}
+
+export interface RankingResponse {
+  leiloes: Record<string, RankingLeilao>;
+  categorias: RankingCategoria[];
 }
 
 function buildSimpleParams(obj: Record<string, string | number | undefined | null>): URLSearchParams {
@@ -171,9 +199,49 @@ export const api = {
   fazendas: (f: Filtros) => fetchJson<Fazenda[]>("/api/fazendas", buildParams(f)),
   regioes: (f: Filtros) => fetchJson<Regiao[]>("/api/regioes", buildParams(f)),
   leiloes: () => fetchJson<LeilaoResumo[]>("/api/leiloes"),
-  comparativoCidades: (p: { cidade_a: string; cidade_b: string; raca?: string; sexo?: string; condicao?: string; dias?: number }) =>
+  comparativoCidades: (p: { cidade_a?: string; cidade_b?: string; leilao_id_a?: number; leilao_id_b?: number; raca?: string; sexo?: string; condicao?: string; idade_min?: number; idade_max?: number; estado?: string; preco_min?: number; preco_max?: number; dias?: number }) =>
     fetchJson<ComparativoCidades>("/api/comparativo/cidades", buildSimpleParams(p)),
+  comparativoLotes: (p: { leilao_id_a: number; leilao_id_b: number; raca: string; sexo: string; idade_meses: number; condicao?: string }) =>
+    fetchJson<{
+      lotes_a: { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[];
+      lotes_b: { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[];
+    }>("/api/comparativo/lotes", buildSimpleParams(p)),
   comparativoEvolucao: (p: { cidade: string; raca?: string; sexo?: string; condicao?: string; idade_min?: number; idade_max?: number; dias?: number }) =>
     fetchJson<PontoEvolucao[]>("/api/comparativo/evolucao", buildSimpleParams(p)),
+  ranking: (p: { raca?: string; sexo?: string; condicao?: string; idade_min?: number; idade_max?: number; estado?: string; cidade?: string; data_inicio?: string; data_fim?: string }) =>
+    fetchJson<RankingResponse>("/api/ranking", buildSimpleParams(p)),
+  rankingLotes: (p: { leilao_ids: string; raca: string; sexo: string; idade_meses: number; condicao?: string }) =>
+    fetchJson<Record<string, { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[]>>(
+      "/api/ranking/lotes", buildSimpleParams(p)
+    ),
+  atualizarLote: async (loteId: number, update: { status?: string; preco_final?: number }) => {
+    const res = await fetch(`${API_URL}/api/lotes/${loteId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ id: number; status: string; preco_final: number | null }>;
+  },
   frameUrl: (path: string) => `${API_URL}/api/frame/${path}`,
+  processar: async (url: string, batch: boolean) => {
+    const res = await fetch(`${API_URL}/api/processar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url, batch }),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ job_id: string; status: string; modo: string }>;
+  },
+  processarAtivos: () =>
+    fetchJson<Record<string, { status: string; url: string; batch: boolean; titulo: string | null; lotes: number | null; leilao_id: number | null; erro: string | null }>>("/api/processar"),
+  cancelarProcessamento: async (jobId: string) => {
+    const res = await fetch(`${API_URL}/api/processar/${jobId}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ id: string; status: string }>;
+  },
+  processarStatus: (jobId: string) =>
+    fetchJson<{ status: string; titulo: string | null; lotes: number | null; leilao_id: number | null; erro: string | null }>(
+      `/api/processar/${jobId}`
+    ),
 };

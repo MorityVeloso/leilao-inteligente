@@ -134,10 +134,16 @@ def extrair_frames_janela(
 def frame_timestamp(frame_path: Path, intervalo_segundos: int = 15) -> float:
     """Calcula o timestamp (em segundos) de um frame pelo seu nome.
 
-    frame_000001.jpg → 0s (primeiro frame)
-    frame_000002.jpg → 15s
-    frame_000003.jpg → 30s
+    Frames normais: frame_000042.jpg → (42-1) * intervalo
+    Frames de refine: refine_1200_0003.jpg → 1200 + (3-1)
     """
-    nome = frame_path.stem  # "frame_000042"
-    numero = int(nome.split("_")[1])
+    nome = frame_path.stem
+    parts = nome.split("_")
+
+    if parts[0] == "refine" and len(parts) >= 3:
+        inicio_seg = int(parts[1])
+        frame_num = int(parts[2])
+        return inicio_seg + (frame_num - 1)
+
+    numero = int(parts[1])
     return (numero - 1) * intervalo_segundos

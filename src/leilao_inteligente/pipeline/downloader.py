@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 import yt_dlp
@@ -95,6 +96,90 @@ def obter_info_video(url: str) -> dict[str, object]:
         "duration": info.get("duration"),
         "description": info.get("description", "")[:500],
     }
+
+
+def extrair_data_leilao(info: dict[str, object]) -> datetime | None:
+    """Extrai a data real do leilao a partir do titulo, descricao ou upload_date.
+
+    Prioridade:
+    1. Data no titulo (ex: "LEILAO ... 26/03/2026")
+    2. Data na descricao
+    3. upload_date do YouTube (YYYYMMDD)
+    """
+    import re
+
+    padrao_data = re.compile(r"(\d{2})/(\d{2})/(\d{4})")
+
+    # 1. Tentar titulo
+    titulo = str(info.get("title", ""))
+    match = padrao_data.search(titulo)
+    if match:
+        dia, mes, ano = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            return datetime(ano, mes, dia)
+        except ValueError:
+            pass
+
+    # 2. Tentar descricao
+    descricao = str(info.get("description", ""))
+    match = padrao_data.search(descricao)
+    if match:
+        dia, mes, ano = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            return datetime(ano, mes, dia)
+        except ValueError:
+            pass
+
+    # 3. Fallback: upload_date do YouTube (YYYYMMDD)
+    upload_date = str(info.get("upload_date", ""))
+    if len(upload_date) == 8 and upload_date.isdigit():
+        try:
+            return datetime(int(upload_date[:4]), int(upload_date[4:6]), int(upload_date[6:8]))
+        except ValueError:
+            pass
+
+    return None
+
+
+# UFs validas para matching
+_UFS = {
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO",
+    "MA", "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR",
+    "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+}
+
+
+def extrair_local_leilao(info: dict[str, object]) -> tuple[str | None, str | None]:
+    """Extrai cidade e estado do titulo ou descricao do video.
+
+    Procura padroes como "RIANÁPOLIS-GO", "CRIXAS - GO", "GOIÂNIA/GO".
+
+    Returns:
+        Tupla (cidade, estado) ou (None, None).
+    """
+    # Procurar CIDADE-UF no final de segmentos (separados por espaço, hífen, barra)
+    # Ex: "RIANÁPOLIS-GO", "CRIXAS-GO", "GOIÂNIA/GO"
+    padrao = re.compile(r"([\w\u00C0-\u024F]+(?:\s+[\w\u00C0-\u024F]+)*)\s*[-/]\s*([A-Z]{2})\b")
+
+    for campo in ["title", "description"]:
+        texto = str(info.get(campo, ""))
+        for match in padrao.finditer(texto):
+            cidade_raw = match.group(1).strip()
+            estado = match.group(2).upper()
+            if estado in _UFS and len(cidade_raw) >= 3:
+                # Pegar só a última palavra antes do UF (a cidade)
+                # Ex: "SINDICATO RURAL DE CRIXAS" → pegar "CRIXAS"
+                # Mas "RIANÁPOLIS" → pegar "RIANÁPOLIS"
+                # Heurística: se tem mais de 2 palavras, pegar a última
+                palavras = cidade_raw.split()
+                if len(palavras) > 2:
+                    # Procurar a última palavra que parece nome de cidade (>3 letras)
+                    cidade = palavras[-1].title()
+                else:
+                    cidade = cidade_raw.title()
+                return cidade, estado
+
+    return None, None
 
 
 def listar_videos_canal(

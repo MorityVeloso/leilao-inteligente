@@ -1,5 +1,7 @@
 """API REST para o dashboard consumir."""
 
+import logging
+import threading
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -7,11 +9,14 @@ from pathlib import Path
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy import func, case
 
 from leilao_inteligente.config import DATA_DIR
 from leilao_inteligente.models.database import Leilao, Lote
 from leilao_inteligente.storage.db import get_session, init_db
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(title="Leilao Inteligente API", version="0.1.0")
@@ -53,7 +58,13 @@ def get_filtros():
         ]
 
         leiloes_list = [
-            {"id": l.id, "titulo": l.titulo}
+            {
+                "id": l.id,
+                "titulo": l.titulo,
+                "local_cidade": l.local_cidade,
+                "local_estado": l.local_estado,
+                "data": (l.data_leilao or l.processado_em).isoformat() if (l.data_leilao or l.processado_em) else None,
+            }
             for l in session.query(Leilao).order_by(Leilao.processado_em.desc()).all()
         ]
 
@@ -461,7 +472,7 @@ def get_leiloes():
                 "local_cidade": l.local_cidade,
                 "local_estado": l.local_estado,
                 "total_lotes": l.total_lotes,
-                "processado_em": l.processado_em.isoformat() if l.processado_em else None,
+                "processado_em": (l.data_leilao or l.processado_em).isoformat() if (l.data_leilao or l.processado_em) else None,
                 "status": l.status,
             }
             for l in leiloes
@@ -473,8 +484,16 @@ def get_leiloes():
 # --- Comparativo ---
 
 
-def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=None, condicao=None):
-    """Consulta médias agrupadas por categoria (idade exata) para uma cidade."""
+def _query_medias(
+    session, cidade=None, leilao_id=None, dias=None,
+    raca=None, sexo=None, condicao=None,
+    idade_min=None, idade_max=None, estado=None,
+    preco_min=None, preco_max=None,
+):
+    """Consulta médias agrupadas por categoria (idade exata).
+
+    Filtra por cidade OU por leilao_id especifico.
+    """
     q = session.query(
         Lote.raca.label("raca"),
         Lote.sexo.label("sexo"),
@@ -486,7 +505,11 @@ def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=No
         func.count(Lote.id).label("lotes"),
     ).join(Leilao)
 
-    q = q.filter(Leilao.local_cidade == cidade)
+    if leilao_id is not None:
+        q = q.filter(Lote.leilao_id == leilao_id)
+    elif cidade:
+        q = q.filter(Leilao.local_cidade == cidade)
+
     q = q.filter(Lote.preco_final > 0)
     q = q.filter(Lote.idade_meses.isnot(None))
 
@@ -496,7 +519,17 @@ def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=No
         q = q.filter(Lote.sexo == sexo)
     if condicao:
         q = q.filter(Lote.condicao == condicao)
-    if dias:
+    if idade_min is not None:
+        q = q.filter(Lote.idade_meses >= idade_min)
+    if idade_max is not None:
+        q = q.filter(Lote.idade_meses <= idade_max)
+    if estado:
+        q = q.filter(Leilao.local_estado == estado)
+    if preco_min is not None:
+        q = q.filter(Lote.preco_final >= preco_min)
+    if preco_max is not None:
+        q = q.filter(Lote.preco_final <= preco_max)
+    if dias and leilao_id is None:
         desde = datetime.utcnow() - timedelta(days=dias)
         q = q.filter(Leilao.processado_em >= desde)
 
@@ -506,18 +539,26 @@ def _query_medias_por_cidade(session, cidade: str, dias: int, raca=None, sexo=No
 
 @app.get("/api/comparativo/cidades")
 def get_comparativo_cidades(
-    cidade_a: str = Query(...),
-    cidade_b: str = Query(...),
+    cidade_a: str | None = None,
+    cidade_b: str | None = None,
+    leilao_id_a: int | None = None,
+    leilao_id_b: int | None = None,
     raca: str | None = None,
     sexo: str | None = None,
     condicao: str | None = None,
+    idade_min: int | None = None,
+    idade_max: int | None = None,
+    estado: str | None = None,
+    preco_min: float | None = None,
+    preco_max: float | None = None,
     dias: int = 90,
 ):
-    """Compara preços médios entre duas cidades por categoria de animal."""
+    """Compara preços médios entre duas cidades ou dois leilões por categoria."""
     session = get_session()
     try:
-        dados_a = _query_medias_por_cidade(session, cidade_a, dias, raca, sexo, condicao)
-        dados_b = _query_medias_por_cidade(session, cidade_b, dias, raca, sexo, condicao)
+        filtros_extra = dict(idade_min=idade_min, idade_max=idade_max, estado=estado, preco_min=preco_min, preco_max=preco_max)
+        dados_a = _query_medias(session, cidade=cidade_a, leilao_id=leilao_id_a, dias=dias, raca=raca, sexo=sexo, condicao=condicao, **filtros_extra)
+        dados_b = _query_medias(session, cidade=cidade_b, leilao_id=leilao_id_b, dias=dias, raca=raca, sexo=sexo, condicao=condicao, **filtros_extra)
 
         # Indexar por chave de categoria (idade exata)
         def _key(row):
@@ -555,11 +596,235 @@ def get_comparativo_cidades(
                 "lotes_b": b.lotes if b else 0,
             })
 
+        # Montar labels: se filtrou por leilao, usar titulo; senao, cidade
+        label_a = cidade_a or ""
+        label_b = cidade_b or ""
+        if leilao_id_a is not None:
+            leilao_a = session.query(Leilao).filter(Leilao.id == leilao_id_a).first()
+            if leilao_a:
+                label_a = leilao_a.titulo or f"Leilão #{leilao_id_a}"
+        if leilao_id_b is not None:
+            leilao_b = session.query(Leilao).filter(Leilao.id == leilao_id_b).first()
+            if leilao_b:
+                label_b = leilao_b.titulo or f"Leilão #{leilao_id_b}"
+
         return {
-            "cidade_a": cidade_a,
-            "cidade_b": cidade_b,
+            "label_a": label_a,
+            "label_b": label_b,
             "categorias": categorias,
         }
+    finally:
+        session.close()
+
+
+@app.get("/api/ranking")
+def get_ranking(
+    raca: str | None = None,
+    sexo: str | None = None,
+    condicao: str | None = None,
+    idade_min: int | None = None,
+    idade_max: int | None = None,
+    estado: str | None = None,
+    cidade: str | None = None,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
+):
+    """Ranking de preços por categoria entre todos os leilões filtrados.
+
+    Retorna para cada categoria (raça+sexo+condição+idade) o preço médio
+    em cada leilão, ordenado do mais barato ao mais caro.
+    """
+    session = get_session()
+    try:
+        q = session.query(
+            Lote.raca,
+            Lote.sexo,
+            Lote.condicao,
+            Lote.idade_meses,
+            Lote.leilao_id,
+            func.avg(Lote.preco_final).label("media"),
+            func.count(Lote.id).label("lotes"),
+        ).join(Leilao)
+
+        q = q.filter(Lote.preco_final > 0)
+        q = q.filter(Lote.idade_meses.isnot(None))
+
+        if raca:
+            q = q.filter(Lote.raca == raca)
+        if sexo:
+            q = q.filter(Lote.sexo == sexo)
+        if condicao:
+            q = q.filter(Lote.condicao == condicao)
+        if idade_min is not None:
+            q = q.filter(Lote.idade_meses >= idade_min)
+        if idade_max is not None:
+            q = q.filter(Lote.idade_meses <= idade_max)
+        if estado:
+            q = q.filter(Leilao.local_estado == estado)
+        if cidade:
+            q = q.filter(Leilao.local_cidade == cidade)
+        if data_inicio:
+            q = q.filter(Leilao.data_leilao >= datetime.fromisoformat(data_inicio))
+        if data_fim:
+            q = q.filter(Leilao.data_leilao <= datetime.fromisoformat(data_fim + "T23:59:59"))
+
+        q = q.group_by(Lote.raca, Lote.sexo, Lote.condicao, Lote.idade_meses, Lote.leilao_id)
+        rows = q.all()
+
+        # Montar mapa de leilões
+        leilao_ids = {r.leilao_id for r in rows}
+        leiloes_map: dict[int, dict] = {}
+        for lid in leilao_ids:
+            leilao = session.query(Leilao).filter(Leilao.id == lid).first()
+            if leilao:
+                leiloes_map[lid] = {
+                    "id": leilao.id,
+                    "titulo": leilao.titulo,
+                    "cidade": leilao.local_cidade,
+                    "estado": leilao.local_estado,
+                    "data": (leilao.data_leilao or leilao.processado_em).isoformat() if (leilao.data_leilao or leilao.processado_em) else None,
+                }
+
+        # Agrupar por categoria
+        categorias: dict[tuple, list] = {}
+        for r in rows:
+            key = (r.raca, r.sexo, r.condicao or "", r.idade_meses)
+            if key not in categorias:
+                categorias[key] = []
+            categorias[key].append({
+                "leilao_id": r.leilao_id,
+                "media": round(float(r.media), 2),
+                "lotes": r.lotes,
+            })
+
+        # Ordenar preços dentro de cada categoria (mais barato primeiro)
+        resultado = []
+        for key in sorted(categorias.keys()):
+            precos = sorted(categorias[key], key=lambda x: x["media"])
+            spread = precos[-1]["media"] - precos[0]["media"] if len(precos) > 1 else 0
+            resultado.append({
+                "raca": key[0],
+                "sexo": key[1],
+                "condicao": key[2] or None,
+                "idade_meses": key[3],
+                "precos": precos,
+                "spread": round(spread, 2),
+            })
+
+        # Filtrar: só categorias com 2+ leilões (senão não tem comparação)
+        resultado = [r for r in resultado if len(r["precos"]) >= 2]
+
+        # Ordenar por maior spread (melhores oportunidades primeiro)
+        resultado.sort(key=lambda x: x["spread"], reverse=True)
+
+        return {
+            "leiloes": leiloes_map,
+            "categorias": resultado,
+        }
+    finally:
+        session.close()
+
+
+@app.get("/api/comparativo/lotes")
+def get_comparativo_lotes(
+    leilao_id_a: int = Query(...),
+    leilao_id_b: int = Query(...),
+    raca: str = Query(...),
+    sexo: str = Query(...),
+    idade_meses: int = Query(...),
+    condicao: str | None = None,
+):
+    """Retorna lotes individuais de ambos os leiloes para uma categoria especifica."""
+    session = get_session()
+    try:
+        def _buscar_lotes(leilao_id: int):
+            q = session.query(Lote).filter(
+                Lote.leilao_id == leilao_id,
+                Lote.raca == raca,
+                Lote.sexo == sexo,
+                Lote.idade_meses == idade_meses,
+                Lote.preco_final > 0,
+            )
+            if condicao:
+                q = q.filter(Lote.condicao == condicao)
+            else:
+                q = q.filter(Lote.condicao.is_(None))
+            return q.order_by(Lote.preco_final).all()
+
+        lotes_a = _buscar_lotes(leilao_id_a)
+        lotes_b = _buscar_lotes(leilao_id_b)
+
+        def _video_id_for(leilao_id: int) -> str | None:
+            leilao = session.query(Leilao).filter(Leilao.id == leilao_id).first()
+            return _extrair_video_id(leilao.url_video) if leilao and leilao.url_video else None
+
+        vid_a = _video_id_for(leilao_id_a)
+        vid_b = _video_id_for(leilao_id_b)
+
+        def _lote_resumo(lote: Lote, video_id: str | None) -> dict:
+            return {
+                "id": lote.id,
+                "lote_numero": lote.lote_numero,
+                "quantidade": lote.quantidade,
+                "preco_final": float(lote.preco_final) if lote.preco_final else None,
+                "fazenda_vendedor": lote.fazenda_vendedor,
+                "status": lote.status,
+                "youtube_url": f"https://www.youtube.com/watch?v={video_id}&t={lote.segundo_video}s" if video_id and lote.segundo_video else None,
+            }
+
+        return {
+            "lotes_a": [_lote_resumo(l, vid_a) for l in lotes_a],
+            "lotes_b": [_lote_resumo(l, vid_b) for l in lotes_b],
+        }
+    finally:
+        session.close()
+
+
+@app.get("/api/ranking/lotes")
+def get_ranking_lotes(
+    leilao_ids: str = Query(..., description="IDs separados por virgula"),
+    raca: str = Query(...),
+    sexo: str = Query(...),
+    idade_meses: int = Query(...),
+    condicao: str | None = None,
+):
+    """Retorna lotes individuais de N leiloes para uma categoria."""
+    session = get_session()
+    try:
+        ids = [int(x.strip()) for x in leilao_ids.split(",") if x.strip()]
+        resultado: dict[int, list[dict]] = {}
+
+        for lid in ids:
+            q = session.query(Lote).filter(
+                Lote.leilao_id == lid,
+                Lote.raca == raca,
+                Lote.sexo == sexo,
+                Lote.idade_meses == idade_meses,
+                Lote.preco_final > 0,
+            )
+            if condicao:
+                q = q.filter(Lote.condicao == condicao)
+            else:
+                q = q.filter(Lote.condicao.is_(None))
+
+            lotes = q.order_by(Lote.preco_final).all()
+            leilao = session.query(Leilao).filter(Leilao.id == lid).first()
+            video_id = _extrair_video_id(leilao.url_video) if leilao and leilao.url_video else None
+
+            resultado[lid] = [
+                {
+                    "id": l.id,
+                    "lote_numero": l.lote_numero,
+                    "quantidade": l.quantidade,
+                    "preco_final": float(l.preco_final) if l.preco_final else None,
+                    "fazenda_vendedor": l.fazenda_vendedor,
+                    "status": l.status,
+                    "youtube_url": f"https://www.youtube.com/watch?v={video_id}&t={l.segundo_video}s" if video_id and l.segundo_video else None,
+                }
+                for l in lotes
+            ]
+
+        return resultado
     finally:
         session.close()
 
@@ -621,7 +886,173 @@ def get_comparativo_evolucao(
         session.close()
 
 
+# --- Processamento de videos ---
+
+
+class ProcessarRequest(BaseModel):
+    url: str
+    batch: bool = False
+
+
+_jobs_cancelados: set[str] = set()
+
+
+def _job_cancelado(job_id: str) -> bool:
+    """Verifica se um job foi cancelado."""
+    return job_id in _jobs_cancelados
+
+
+def _atualizar_job(job_id: str, **kwargs: object) -> None:
+    """Atualiza campos de um job de processamento no banco."""
+    session = get_session()
+    try:
+        from leilao_inteligente.models.database import Processamento
+        job = session.query(Processamento).filter(Processamento.id == job_id).first()
+        if job:
+            for k, v in kwargs.items():
+                setattr(job, k, v)
+            session.commit()
+    finally:
+        session.close()
+
+
+def _executar_processamento(job_id: str, url: str, batch: bool) -> None:
+    """Executa o pipeline de processamento em background thread."""
+    from leilao_inteligente.models.schemas import LeilaoInfo
+    from leilao_inteligente.pipeline.downloader import obter_info_video, extrair_data_leilao, extrair_local_leilao
+    from leilao_inteligente.pipeline.processor import processar_video
+    from leilao_inteligente.storage.repository import salvar_leilao
+
+    try:
+        if _job_cancelado(job_id):
+            return
+
+        _atualizar_job(job_id, status="baixando")
+        info = obter_info_video(url)
+
+        if _job_cancelado(job_id):
+            return
+
+        _atualizar_job(job_id, status="processando", titulo=str(info.get("title", "")))
+        lotes = processar_video(url, batch=batch)
+
+        if _job_cancelado(job_id):
+            return
+
+        if not lotes:
+            _atualizar_job(job_id, status="concluido", lotes=0)
+            return
+
+        cidade, estado = extrair_local_leilao(info)
+        leilao_info = LeilaoInfo(
+            canal_youtube=str(info.get("channel", "Desconhecido")),
+            url_video=url,
+            titulo=str(info.get("title", "Sem titulo")),
+            data_leilao=extrair_data_leilao(info),
+            local_cidade=cidade,
+            local_estado=estado,
+        )
+        leilao = salvar_leilao(leilao_info, lotes)
+
+        _atualizar_job(job_id, status="concluido", lotes=len(lotes), leilao_id=leilao.id)
+
+    except Exception as e:
+        logger.exception("Erro no processamento %s", job_id)
+        _atualizar_job(job_id, status="erro", erro=str(e)[:1000])
+
+
+@app.post("/api/processar")
+def post_processar(req: ProcessarRequest):
+    """Inicia processamento de um video em background."""
+    import uuid
+    from leilao_inteligente.models.database import Processamento
+
+    job_id = uuid.uuid4().hex[:12]
+
+    session = get_session()
+    try:
+        job = Processamento(id=job_id, url=req.url, batch=int(req.batch), status="iniciando")
+        session.add(job)
+        session.commit()
+    finally:
+        session.close()
+
+    thread = threading.Thread(
+        target=_executar_processamento,
+        args=(job_id, req.url, req.batch),
+        daemon=True,
+    )
+    thread.start()
+
+    modo = "batch (50% desconto)" if req.batch else "online"
+    return {"job_id": job_id, "status": "iniciando", "modo": modo}
+
+
+@app.get("/api/processar")
+def get_processamentos_ativos():
+    """Retorna todos os jobs de processamento (ativos e recentes)."""
+    from leilao_inteligente.models.database import Processamento
+
+    session = get_session()
+    try:
+        jobs = session.query(Processamento).order_by(Processamento.criado_em.desc()).limit(10).all()
+        return {j.id: j.to_dict() for j in jobs}
+    finally:
+        session.close()
+
+
+@app.get("/api/processar/{job_id}")
+def get_processamento_status(job_id: str):
+    """Retorna status de um processamento em andamento."""
+    from leilao_inteligente.models.database import Processamento
+
+    session = get_session()
+    try:
+        job = session.query(Processamento).filter(Processamento.id == job_id).first()
+        if not job:
+            return JSONResponse({"error": "Job nao encontrado"}, status_code=404)
+        return job.to_dict()
+    finally:
+        session.close()
+
+
+@app.delete("/api/processar/{job_id}")
+def delete_processamento(job_id: str):
+    """Cancela um processamento em andamento."""
+    from leilao_inteligente.models.database import Processamento
+
+    _jobs_cancelados.add(job_id)
+    _atualizar_job(job_id, status="cancelado", erro="Cancelado pelo usuário")
+
+    return {"id": job_id, "status": "cancelado"}
+
+
 # --- Frames visuais ---
+
+
+class LoteUpdate(BaseModel):
+    status: str | None = None
+    preco_final: float | None = None
+
+
+@app.patch("/api/lotes/{lote_id}")
+def patch_lote(lote_id: int, update: LoteUpdate):
+    """Atualiza campos de um lote (ex: status manual)."""
+    session = get_session()
+    try:
+        lote = session.query(Lote).filter(Lote.id == lote_id).first()
+        if not lote:
+            return JSONResponse({"error": "Lote não encontrado"}, status_code=404)
+
+        if update.status is not None:
+            lote.status = update.status
+        if update.preco_final is not None:
+            lote.preco_final = update.preco_final
+
+        session.commit()
+        return {"id": lote.id, "status": lote.status, "preco_final": float(lote.preco_final) if lote.preco_final else None}
+    finally:
+        session.close()
 
 
 @app.get("/api/frame/{path:path}")

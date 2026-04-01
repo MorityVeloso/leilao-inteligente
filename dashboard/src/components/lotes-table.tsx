@@ -12,6 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { api, type Filtros } from "@/lib/api";
+import { formatLeilao, formatCidade } from "@/lib/format";
 
 function formatBRL(value: number | null): string {
   if (value === null) return "—";
@@ -32,9 +33,10 @@ function statusBadge(status: string) {
 interface LotesTableProps {
   filtros: Filtros;
   onPlayVideo?: (url: string, lote: string) => void;
+  onSelectLote?: (lote: Lote) => void;
 }
 
-export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
+export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTableProps) {
   const { data: lotes = [], isLoading: loading, isError } = useQuery({
     queryKey: ["lotes", filtros],
     queryFn: () => api.lotes(filtros),
@@ -110,16 +112,12 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                         </TableCell>
                         <TableCell className="px-2 text-muted-foreground truncate max-w-[120px]" title={lote.leilao_titulo ?? ""}>
                           {lote.leilao_titulo
-                            ? lote.leilao_titulo
-                                .replace(/LEIL[ÃA]O\s*/i, "")
-                                .replace(/\bLIVE\b.*/i, "")
-                                .replace(/SINDICATO\s+RURAL/gi, "Sind. Rur.")
-                                .trim()
+                            ? formatLeilao(lote.leilao_titulo)
                             : "—"}
                         </TableCell>
                         <TableCell className="px-2 whitespace-nowrap">
                           {lote.local_cidade && lote.local_estado
-                            ? `${lote.local_cidade}-${lote.local_estado}`
+                            ? `${formatCidade(lote.local_cidade)}-${lote.local_estado.toUpperCase()}`
                             : "—"}
                         </TableCell>
                         <TableCell className="px-2 font-mono font-bold">{lote.lote_numero}</TableCell>
@@ -162,7 +160,9 @@ export function LotesTable({ filtros, onPlayVideo }: LotesTableProps) {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (onPlayVideo) {
+                                  if (onSelectLote) {
+                                    onSelectLote(lote);
+                                  } else if (onPlayVideo) {
                                     onPlayVideo(lote.youtube_url!, lote.lote_numero);
                                   } else {
                                     window.open(lote.youtube_url!, "_blank");

@@ -15,7 +15,7 @@ from leilao_inteligente.pipeline.change_detector import filtrar_frames_relevante
 from leilao_inteligente.pipeline.downloader import baixar_video, extrair_video_id
 from leilao_inteligente.pipeline.frame_extractor import extrair_frames, extrair_frames_janela, frame_timestamp
 from leilao_inteligente.pipeline.validator import validar_lote
-from leilao_inteligente.pipeline.vision import extrair_dados_lote
+from leilao_inteligente.pipeline.vision import extrair_dados_lote, extrair_dados_lote_batch
 
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 REPESCAGEM_MIN_MINUTOS = 10
 FRAMES_VISUAIS_POR_LOTE = 4
 LOTE_FRAMES_DIR = DATA_DIR / "lote_frames"
-JANELA_ARREMATACAO_SEGUNDOS = 15
+JANELA_ARREMATACAO_SEGUNDOS = 5
 OUTLIER_GAP_SEGUNDOS = 300  # 5 min — frame isolado do cluster principal
 
 
@@ -385,7 +385,11 @@ def _dedup_lotes_espelhados(lotes: list[LoteConsolidado]) -> list[LoteConsolidad
             )
             tempo_proximo = diff_tempo < 30 * 60
 
-            # Precisa de pelo menos 2 criterios alem do numero invertido
+            # Quantidade diferente = lotes diferentes com certeza
+            if not mesma_qtd:
+                continue
+
+            # Precisa de pelo menos 3 criterios (qtd obrigatoria + 2 de raca/sexo/tempo)
             score = sum([mesma_raca, mesmo_sexo, mesma_qtd, tempo_proximo])
 
             if score >= 3:
@@ -438,9 +442,19 @@ def _pegar_ultima_aparicao_lcf(frames: list[LoteComFrame]) -> list[LoteComFrame]
     return frames[ultimo_gap_idx:]
 
 
-def processar_video(url: str) -> list[LoteConsolidado]:
-    """Pipeline completo: download → frames → deteccao → extracao → consolidacao."""
+def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
+    """Pipeline completo: download → frames → deteccao → extracao → consolidacao.
+
+    Args:
+        url: URL do video no YouTube.
+        batch: Se True, usa Batch API (50% mais barato, ate 24h).
+               Usar apenas para videos gravados, nunca para ao vivo.
+    """
     settings = get_settings()
+    extrair_fn = extrair_dados_lote_batch if batch else extrair_dados_lote
+
+    if batch:
+        logger.info("Modo BATCH ativado (50%% desconto, processamento assincrono)")
     video_id = extrair_video_id(url)
 
     with Progress(
@@ -480,7 +494,7 @@ def processar_video(url: str) -> list[LoteConsolidado]:
         def _on_frame_done() -> None:
             progress.advance(task)
 
-        resultados_gemini = extrair_dados_lote(
+        resultados_gemini = extrair_fn(
             frames_relevantes, callback=_on_frame_done
         )
 
@@ -516,7 +530,8 @@ def processar_video(url: str) -> list[LoteConsolidado]:
         logger.info("Passada 2: refinando %d lotes com poucos frames", len(lotes_refinar))
 
         novos_lcfs = _refinar_lotes(
-            video_path, lotes_refinar, lotes_com_frame, settings.frame_interval_seconds
+            video_path, lotes_refinar, lotes_com_frame, settings.frame_interval_seconds,
+            extrair_fn=extrair_fn,
         )
 
         if novos_lcfs:
@@ -536,7 +551,8 @@ def processar_video(url: str) -> list[LoteConsolidado]:
         logger.info("Passada 3: capturando arrematacao de %d lotes", len(janelas_arrematacao))
 
         novos_lcfs_arremate = _refinar_lotes(
-            video_path, janelas_arrematacao, lotes_com_frame, settings.frame_interval_seconds
+            video_path, janelas_arrematacao, lotes_com_frame, settings.frame_interval_seconds,
+            extrair_fn=extrair_fn,
         )
 
         if novos_lcfs_arremate:
@@ -667,11 +683,14 @@ def _refinar_lotes(
     lotes_refinar: dict[str, tuple[float, float]],
     lotes_existentes: list[LoteComFrame],
     intervalo_original: int,
+    extrair_fn: object = None,
 ) -> list[LoteComFrame]:
-    """Passada 2: extrai frames de 1s nas janelas dos lotes com poucos frames.
+    """Passada 2/3: extrai frames de 1s nas janelas dos lotes com poucos frames.
 
-    Envia ao Gemini e retorna novos LoteComFrame pra integrar.
+    Envia ao Gemini (online ou batch) e retorna novos LoteComFrame pra integrar.
     """
+    if extrair_fn is None:
+        extrair_fn = extrair_dados_lote
     from leilao_inteligente.config import FRAMES_DIR
 
     video_name = video_path.stem
@@ -695,9 +714,9 @@ def _refinar_lotes(
 
     logger.info("Passada 2: extraidos %d frames de %d lotes", len(todos_frames), len(lotes_refinar))
 
-    # Enviar ao Gemini em paralelo
+    # Enviar ao Gemini (online ou batch)
     frame_paths = [fp for _, fp in todos_frames]
-    resultados = extrair_dados_lote(frame_paths)
+    resultados = extrair_fn(frame_paths)
 
     # Validar e criar LoteComFrame
     novos: list[LoteComFrame] = []

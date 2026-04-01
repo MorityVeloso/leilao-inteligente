@@ -1,16 +1,22 @@
-"""Extracao de dados de frames via Gemini Flash Vision."""
+"""Extracao de dados de frames via Gemini Flash Vision.
+
+Suporta dois modos de execucao:
+- Online: requests paralelos em tempo real (para ao vivo)
+- Batch: upload pro GCS + Batch API com 50% desconto (para videos gravados)
+"""
 
 import hashlib
 import json
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import cv2
 import numpy as np
 from google import genai
-from google.genai.types import GenerateContentConfig, Part
+from google.genai.types import CreateBatchJobConfig, GenerateContentConfig, JobState, Part
 
 from leilao_inteligente.config import get_settings, DATA_DIR
 
@@ -20,15 +26,20 @@ logger = logging.getLogger(__name__)
 FRAME_WIDTH = 640
 TOPO_PERCENT = 15   # 15% superior (logos, cidade, hora)
 BASE_PERCENT = 55   # 55% inferior (lote, descrição, preço, fazenda)
-MAX_PARALELO = 20
+MAX_PARALELO = 7
 CACHE_DIR = DATA_DIR / "gemini_cache"
+BATCH_GCS_PREFIX = "leilao_batch"
+BATCH_POLL_INTERVAL = 30  # segundos entre checks de status
 
-PROMPT_EXTRACAO = """Extraia os dados do overlay deste frame de leilão de gado brasileiro.
+PROMPT_EXTRACAO = """Analise este frame de um leilão de gado brasileiro transmitido ao vivo.
 
-O layout do overlay varia entre casas de leilão. Os dados podem estar em qualquer posição
-do frame (topo, centro, inferior, esquerda, direita). Leia todo o frame.
+A imagem mostra o topo e a base do vídeo concatenados (o meio com o gado foi removido).
+O overlay do leilão contém textos sobrepostos com dados do lote sendo leiloado.
 
-Retorne APENAS um JSON válido neste formato, sem markdown:
+Se NÃO houver overlay de lote (pista vazia, intervalo, propaganda, telefones, tela de espera):
+{"erro": "nao_e_leilao"}
+
+Se houver overlay com dados do lote, retorne APENAS este JSON sem markdown:
 {
     "lote_numero": "12",
     "quantidade": 25,
@@ -46,20 +57,19 @@ Retorne APENAS um JSON válido neste formato, sem markdown:
 }
 
 Regras:
-- lote_numero: string exata do número do lote no overlay ("12", "0005", "001A")
-- quantidade: número de animais no lote
-- raca: Nelore, Angus, Cruzado, Anelorado, Guzera, Senepol, etc (apenas a raça, sem condição reprodutiva)
-- sexo: "macho", "femea" ou "misto" (sem acento). Pode aparecer como MACHO(S), FEMEA(S), FÊMEA(S)
-- condicao: condição reprodutiva da fêmea: "parida" (com bezerro/cria ao pé), "prenhe" (gestante), "solteira", "desmamada". null se macho ou não informado
-- idade_meses: converter para meses. "16 MS" = 16, "2 ANOS" = 24, "36 M" = 36. null se não visível
-- pelagem: null se não visível
-- preco_lance: valor em R$ por animal (não por lote). Número sem R$, pontos de milhar ou vírgula. 0 se não visível
-- local_cidade e local_estado (sigla UF 2 letras). Pode estar em qualquer parte do frame
-- fazenda_vendedor: nome do vendedor/fazenda. Pode aparecer como "VENDEDOR:", "FAZ.", ou na faixa acima da descrição
-- timestamp_video: data/hora do overlay (DD/MM/AAAA HH:MM:SS). null se não visível
-- confianca: 0.0 a 1.0
-- Se não for frame de leilão: {"erro": "nao_e_leilao"}
-- Se não conseguir ler um campo: null
+- lote_numero: número/código do lote visível no overlay ("12", "0005", "G2")
+- quantidade: número de animais. Aparece como "5 MACHO(S)", "25 FEMEA(S)", etc
+- raca: Nelore, Anelorado, Mestiço, Guzera, Senepol, Tabapua, Angus (apenas raça, sem condição)
+- sexo: "macho", "femea" ou "misto"
+- condicao: só fêmeas — "parida", "prenhe", "solteira", "desmamada". null se macho
+- idade_meses: converter "16 MS"=16, "2 ANOS"=24, "36 M"=36. null se não visível
+- preco_lance: valor em R$ por animal. Leia o número perto de "R$" ou "VALOR POR ANIMAL". Se o campo mostra "R$ ,00" ou "R$ .00" sem valor, retorne 0. Retorne número sem R$, pontos ou vírgula (ex: 2680.00)
+- local_cidade: cidade do leilão. Procure no topo do frame, em logos, banners, ou perto de "LIVE". Pode estar em texto pequeno dentro de logos amarelos/coloridos
+- local_estado: sigla UF (2 letras). Geralmente junto com a cidade (ex: "Rianápolis-GO")
+- fazenda_vendedor: nome do vendedor/fazenda. Aparece como "VENDEDOR:", "FAZ.", "FAZENDA"
+- timestamp_video: hora do overlay (DD/MM/AAAA HH:MM:SS ou HH:MM:SS). Procure perto de "LIVE". null se não visível
+- confianca: 0.0 a 1.0 (sua confiança na leitura)
+- Campo não legível: null (não invente)
 """
 
 MODEL_NAME = "gemini-2.5-flash-lite"
@@ -310,5 +320,333 @@ def extrair_dados_lote(
                 resultados.append((frame_path, dados))
             if callback:
                 callback()
+
+    return resultados
+
+
+# --- Batch API (50% mais barato, para videos gravados) ---
+
+
+def _upload_frames_gcs(
+    frames_para_upload: list[tuple[Path, bytes, str]],
+    bucket_name: str,
+    batch_id: str,
+) -> dict[str, tuple[Path, str]]:
+    """Upload frames preparados para o GCS.
+
+    Returns:
+        Dict de gcs_uri → (frame_path, cache_key).
+    """
+    from google.cloud import storage as gcs
+
+    settings = get_settings()
+    gcs_client = gcs.Client(project=settings.gcp_project_id)
+    bucket = gcs_client.bucket(bucket_name)
+
+    frame_map: dict[str, tuple[Path, str]] = {}
+
+    for fp, overlay_bytes, key in frames_para_upload:
+        blob_name = f"{batch_id}/{key}.jpg"
+        blob = bucket.blob(blob_name)
+        # FIX 1: timeout para upload individual (evita travamento)
+        blob.upload_from_string(overlay_bytes, content_type="image/jpeg", timeout=60)
+        gcs_uri = f"gs://{bucket_name}/{blob_name}"
+        frame_map[gcs_uri] = (fp, key)
+
+    return frame_map
+
+
+def _criar_jsonl_batch(
+    frame_map: dict[str, tuple[Path, str]],
+    bucket_name: str,
+    batch_id: str,
+) -> str:
+    """Cria arquivo JSONL com requests e faz upload pro GCS.
+
+    Returns:
+        URI GCS do arquivo JSONL.
+    """
+    from google.cloud import storage as gcs
+
+    settings = get_settings()
+    lines: list[str] = []
+
+    for gcs_uri in frame_map:
+        request = {
+            "request": {
+                "contents": [{
+                    "role": "user",
+                    "parts": [
+                        {"text": PROMPT_EXTRACAO},
+                        {"fileData": {"fileUri": gcs_uri, "mimeType": "image/jpeg"}},
+                    ],
+                }],
+                "generationConfig": {
+                    "temperature": 0.1,
+                    "maxOutputTokens": 1024,
+                },
+            }
+        }
+        lines.append(json.dumps(request, ensure_ascii=False))
+
+    # FIX 2: verificar que temos linhas antes de fazer upload
+    if not lines:
+        raise ValueError("Nenhuma linha JSONL gerada")
+
+    gcs_client = gcs.Client(project=settings.gcp_project_id)
+    bucket = gcs_client.bucket(bucket_name)
+    blob_name = f"{batch_id}/input.jsonl"
+    blob = bucket.blob(blob_name)
+    blob.upload_from_string("\n".join(lines), content_type="application/jsonl", timeout=120)
+
+    return f"gs://{bucket_name}/{blob_name}"
+
+
+def _aguardar_batch(client: genai.Client, job: object, timeout_horas: int = 24) -> object:
+    """Aguarda conclusao do batch job com polling.
+
+    FIX 3: timeout maximo para evitar polling infinito.
+    """
+    completed_states = {
+        JobState.JOB_STATE_SUCCEEDED,
+        JobState.JOB_STATE_FAILED,
+        JobState.JOB_STATE_CANCELLED,
+    }
+
+    max_polls = (timeout_horas * 3600) // BATCH_POLL_INTERVAL
+    polls = 0
+
+    while job.state not in completed_states:
+        polls += 1
+        if polls > max_polls:
+            logger.error("Batch timeout apos %dh de polling", timeout_horas)
+            return job
+
+        time.sleep(BATCH_POLL_INTERVAL)
+        try:
+            job = client.batches.get(name=job.name)
+        except Exception as e:
+            # FIX 4: erro de rede no polling nao deve matar o job
+            logger.warning("Erro ao consultar batch: %s (tentando novamente)", e)
+            continue
+
+        logger.info("Batch %s: %s (poll %d)", job.name, job.state, polls)
+
+    return job
+
+
+def _parsear_resultados_batch(
+    bucket_name: str,
+    batch_id: str,
+    frame_map: dict[str, tuple[Path, str]],
+) -> list[tuple[Path, dict[str, object]]]:
+    """Baixa e parseia resultados do batch job do GCS."""
+    from google.cloud import storage as gcs
+
+    settings = get_settings()
+    gcs_client = gcs.Client(project=settings.gcp_project_id)
+    bucket = gcs_client.bucket(bucket_name)
+
+    resultados: list[tuple[Path, dict[str, object]]] = []
+    erros = 0
+
+    output_blobs = list(bucket.list_blobs(prefix=f"{batch_id}/output/"))
+
+    # FIX 5: log se nao encontrou output
+    if not output_blobs:
+        logger.warning("Batch: nenhum arquivo de output encontrado em %s/output/", batch_id)
+        return resultados
+
+    for output_blob in output_blobs:
+        if not output_blob.name.endswith(".jsonl"):
+            continue
+
+        content = output_blob.download_as_text()
+        for line in content.strip().split("\n"):
+            if not line.strip():
+                continue
+
+            try:
+                result = json.loads(line)
+            except json.JSONDecodeError:
+                erros += 1
+                continue
+
+            # Status vazio = sucesso
+            if result.get("status"):
+                erros += 1
+                logger.debug("Batch request falhou: %s", result["status"])
+                continue
+
+            # FIX 6: extrair GCS URI com validacao robusta
+            try:
+                parts = result.get("request", {}).get("contents", [{}])[0].get("parts", [])
+                gcs_uri = next(
+                    (p["fileData"]["fileUri"]
+                     for p in parts
+                     if isinstance(p.get("fileData"), dict)
+                     and isinstance(p["fileData"].get("fileUri"), str)),
+                    None,
+                )
+                if gcs_uri is None:
+                    erros += 1
+                    continue
+            except (KeyError, IndexError, TypeError):
+                erros += 1
+                continue
+
+            if gcs_uri not in frame_map:
+                continue
+
+            fp, key = frame_map[gcs_uri]
+
+            # FIX 7: parsear resposta com validacao robusta
+            try:
+                response = result.get("response", {})
+                candidates = response.get("candidates", [])
+                if not candidates:
+                    erros += 1
+                    continue
+                content_parts = candidates[0].get("content", {}).get("parts", [])
+                if not content_parts:
+                    erros += 1
+                    continue
+                response_text = content_parts[0].get("text", "")
+                if not response_text:
+                    erros += 1
+                    continue
+            except (KeyError, IndexError, TypeError):
+                erros += 1
+                continue
+
+            dados = _parse_response(response_text)
+            if dados:
+                _cache_set(key, dados)
+                resultados.append((fp, dados))
+
+    if erros:
+        logger.info("Batch parsing: %d extraidos, %d erros", len(resultados), erros)
+
+    return resultados
+
+
+def _limpar_gcs_batch(bucket_name: str, batch_id: str) -> None:
+    """Remove arquivos temporarios do GCS apos o batch."""
+    from google.cloud import storage as gcs
+
+    settings = get_settings()
+    try:
+        gcs_client = gcs.Client(project=settings.gcp_project_id)
+        bucket = gcs_client.bucket(bucket_name)
+        blobs = list(bucket.list_blobs(prefix=batch_id))
+        if blobs:
+            bucket.delete_blobs(blobs)
+            logger.info("GCS cleanup: removidos %d arquivos de %s", len(blobs), batch_id)
+    except Exception:
+        logger.warning("Falha ao limpar GCS %s/%s", bucket_name, batch_id)
+
+
+def extrair_dados_lote_batch(
+    frames: list[Path],
+    callback: object = None,
+) -> list[tuple[Path, dict[str, object]]]:
+    """Extrai dados via Batch API (50% mais barato, para videos gravados).
+
+    Fluxo:
+    1. Preparar frames (crop topo+base) e verificar cache local
+    2. Upload frames sem cache pro GCS
+    3. Criar JSONL e submeter batch job
+    4. Aguardar resultado (polling a cada 30s)
+    5. Parsear resultados e atualizar cache local
+    6. Limpar GCS
+    """
+    settings = get_settings()
+
+    if not settings.gcs_bucket:
+        raise ValueError(
+            "GCS_BUCKET nao configurado. Necessario para Batch API. "
+            "Configure no .env: GCS_BUCKET=nome-do-bucket"
+        )
+
+    if settings.gemini_backend != "vertex":
+        raise ValueError("Batch API so funciona com backend Vertex AI. Configure: GEMINI_BACKEND=vertex")
+
+    resultados: list[tuple[Path, dict[str, object]]] = []
+    frames_para_upload: list[tuple[Path, bytes, str]] = []
+    cache_hits = 0
+
+    # 1. Verificar cache local
+    for fp in frames:
+        try:
+            overlay_bytes = _preparar_frame(fp)
+            key = _cache_key(overlay_bytes)
+            cached = _cache_get(key)
+            if cached is not None:
+                resultados.append((fp, cached))
+                cache_hits += 1
+                if callback:
+                    callback()
+            else:
+                frames_para_upload.append((fp, overlay_bytes, key))
+        except Exception:
+            logger.debug("Erro ao preparar frame %s, pulando", fp.name)
+
+    if cache_hits:
+        logger.info(
+            "Batch cache: %d hits, %d misses → %d para upload",
+            cache_hits, len(frames_para_upload), len(frames_para_upload),
+        )
+
+    if not frames_para_upload:
+        return resultados
+
+    bucket_name = settings.gcs_bucket
+    batch_id = f"{BATCH_GCS_PREFIX}/{uuid.uuid4().hex[:12]}"
+
+    try:
+        # 2. Upload frames pro GCS
+        logger.info("Batch: uploading %d frames para gs://%s/%s", len(frames_para_upload), bucket_name, batch_id)
+        frame_map = _upload_frames_gcs(frames_para_upload, bucket_name, batch_id)
+        logger.info("Batch: upload concluido (%d frames)", len(frame_map))
+
+        # 3. Criar JSONL e submeter batch
+        jsonl_uri = _criar_jsonl_batch(frame_map, bucket_name, batch_id)
+        output_uri = f"gs://{bucket_name}/{batch_id}/output/"
+
+        client = _get_client()
+        job = client.batches.create(
+            model=MODEL_NAME,
+            src=jsonl_uri,
+            config=CreateBatchJobConfig(dest=output_uri),
+        )
+        logger.info("Batch job criado: %s (estado: %s)", job.name, job.state)
+
+        # 4. Aguardar conclusao
+        job = _aguardar_batch(client, job)
+
+        if job.state != JobState.JOB_STATE_SUCCEEDED:
+            logger.error("Batch job falhou: %s", job.state)
+            return resultados
+
+        # 5. Parsear resultados
+        batch_resultados = _parsear_resultados_batch(bucket_name, batch_id, frame_map)
+        resultados.extend(batch_resultados)
+
+        logger.info(
+            "Batch concluido: %d extraidos de %d enviados (%d do cache)",
+            len(batch_resultados), len(frame_map), cache_hits,
+        )
+
+        # Notificar callback para os frames do batch
+        if callback:
+            for _ in batch_resultados:
+                callback()
+
+    finally:
+        # FIX: sempre limpar GCS, mesmo em caso de erro
+        _limpar_gcs_batch(bucket_name, batch_id)
+
+    # 6. Limpar GCS
+    _limpar_gcs_batch(bucket_name, batch_id)
 
     return resultados

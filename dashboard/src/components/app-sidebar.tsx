@@ -4,6 +4,7 @@ import {
   ClipboardList,
   LineChart,
   Scale,
+  Trophy,
   Radio,
   Settings,
   Beef,
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { title: "Leilões", icon: ClipboardList, path: "/leiloes" },
   { title: "Análise", icon: LineChart, path: "/analise" },
   { title: "Comparativo", icon: Scale, path: "/comparativo" },
+  { title: "Ranking", icon: Trophy, path: "/ranking" },
   { title: "Ao Vivo", icon: Radio, path: "/ao-vivo" },
 ];
 

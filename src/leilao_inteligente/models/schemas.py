@@ -27,9 +27,11 @@ class LoteExtraido(BaseModel):
     preco_lance: Decimal = Field(
         ge=Decimal("0"), le=Decimal("500000"), description="Valor do lance em R$"
     )
-    local_cidade: str = Field(min_length=2, max_length=100, description="Cidade")
-    local_estado: str = Field(
-        min_length=2, max_length=2, description="Sigla do estado (UF)"
+    local_cidade: str | None = Field(
+        default=None, max_length=100, description="Cidade"
+    )
+    local_estado: str | None = Field(
+        default=None, max_length=2, description="Sigla do estado (UF)"
     )
     fazenda_vendedor: str | None = Field(
         default=None, max_length=200, description="Nome da fazenda vendedora"
@@ -56,8 +58,8 @@ class LoteConsolidado(BaseModel):
     preco_inicial: Decimal
     preco_final: Decimal
     preco_por_cabeca: Decimal | None = None
-    local_cidade: str
-    local_estado: str
+    local_cidade: str | None = None
+    local_estado: str | None = None
     fazenda_vendedor: str | None = None
     timestamp_inicio: datetime
     timestamp_fim: datetime | None = None
