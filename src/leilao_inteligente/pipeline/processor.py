@@ -276,6 +276,7 @@ def consolidar_lotes(
         else:
             preco_final = ultimo.preco_lance
 
+
         if aparicoes > 1:
             status = "repescagem"
         elif preco_final > preco_inicial:
