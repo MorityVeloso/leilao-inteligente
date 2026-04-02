@@ -463,8 +463,7 @@ def _pegar_ultima_aparicao_lcf(frames: list[LoteComFrame]) -> list[LoteComFrame]
     return frames[ultimo_gap_idx:]
 
 
-CARIMBO_JANELA_ANTES = 2   # segundos antes do fim do lote
-CARIMBO_JANELA_DEPOIS = 5  # segundos depois do fim do lote
+CARIMBO_INTERVALO_FRAMES = 2  # extrair 1 frame a cada 2s na janela (economiza Gemini)
 
 
 def _detectar_arrematacao_visual(
@@ -475,9 +474,9 @@ def _detectar_arrematacao_visual(
 ) -> list[LoteConsolidado]:
     """Passada 4: detecta carimbo visual de arrematação (VENDIDO, martelo, etc).
 
-    Para cada lote, extrai frames na transição (fim do lote → início do próximo)
+    O carimbo aparece entre o fim de um lote e o início do próximo.
+    Para cada par de lotes consecutivos, extrai frames no gap entre eles
     e verifica se algum contém indicador visual de venda.
-    Se detectado, marca status = "arrematado".
     """
     from leilao_inteligente.config import FRAMES_DIR
     from leilao_inteligente.pipeline.vision import detectar_carimbo_lote
@@ -489,44 +488,71 @@ def _detectar_arrematacao_visual(
     stamp_dir = FRAMES_DIR / video_name / "stamp"
     stamp_dir.mkdir(parents=True, exist_ok=True)
 
-    # Calcular timestamp final de cada lote no vídeo
-    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
-    for lcf in lotes_com_frame:
-        por_lote[lcf.lote.lote_numero].append(lcf)
+    # Calcular timestamp (segundo do vídeo) de cada lote
+    def _ultimo_ts_lote(lote_numero: str) -> float | None:
+        por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+        for lcf in lotes_com_frame:
+            por_lote[lcf.lote.lote_numero].append(lcf)
+        frames = por_lote.get(lote_numero, [])
+        ts_list: list[float] = []
+        for f in frames:
+            nome = f.frame_path.stem
+            parts = nome.split("_")
+            try:
+                if parts[0] == "refine":
+                    ts_list.append(int(parts[1]) + (int(parts[2]) - 1))
+                else:
+                    ts_list.append((int(parts[1]) - 1) * intervalo_original)
+            except (ValueError, IndexError):
+                continue
+        return max(ts_list) if ts_list else None
+
+    # Ordenar lotes por timestamp de início
+    consolidados_ordenados = sorted(consolidados, key=lambda c: c.timestamp_inicio)
+
+    # Construir mapa de segundo_video por lote
+    ts_fim: dict[str, float] = {}
+    ts_inicio_prox: dict[str, float] = {}
+    for i, c in enumerate(consolidados_ordenados):
+        fim = _ultimo_ts_lote(c.lote_numero)
+        if fim is not None:
+            ts_fim[c.lote_numero] = fim
+        # O início do próximo lote indica onde o gap termina
+        if i + 1 < len(consolidados_ordenados):
+            prox = consolidados_ordenados[i + 1]
+            prox_inicio = prox.segundo_video
+            if prox_inicio is not None:
+                ts_inicio_prox[c.lote_numero] = float(prox_inicio)
 
     detectados = 0
     total_verificados = 0
 
     for consolidado in consolidados:
-        frames_lote = por_lote.get(consolidado.lote_numero, [])
-        if not frames_lote:
+        fim_lote = ts_fim.get(consolidado.lote_numero)
+        if fim_lote is None:
             continue
 
-        # Calcular timestamp final do lote no vídeo
-        timestamps: list[float] = []
-        for f in frames_lote:
-            nome = f.frame_path.stem
-            parts = nome.split("_")
-            try:
-                if parts[0] == "refine":
-                    ts = int(parts[1]) + (int(parts[2]) - 1)
-                else:
-                    ts = (int(parts[1]) - 1) * intervalo_original
-                timestamps.append(ts)
-            except (ValueError, IndexError):
-                continue
+        # Janela: do último frame do lote até o início do próximo lote
+        inicio_prox = ts_inicio_prox.get(consolidado.lote_numero)
+        if inicio_prox is not None:
+            # Gap entre lotes: extrair frames no gap inteiro
+            janela_inicio = fim_lote
+            janela_fim = inicio_prox
+        else:
+            # Último lote: extrair 60s depois
+            janela_inicio = fim_lote
+            janela_fim = fim_lote + 60
 
-        if not timestamps:
+        # Limitar janela a no máximo 120s (evitar lotes com gap enorme)
+        duracao = janela_fim - janela_inicio
+        if duracao > 120:
+            janela_fim = janela_inicio + 120
+        if duracao < 3:
             continue
 
-        ultimo_ts = max(timestamps)
-        inicio = max(0, ultimo_ts - CARIMBO_JANELA_ANTES)
-        fim = ultimo_ts + CARIMBO_JANELA_DEPOIS
-
-        # Extrair frames de 1fps na janela de transição
         frames_stamp = extrair_frames_janela(
-            video_path, inicio, fim, stamp_dir,
-            intervalo_segundos=1,
+            video_path, janela_inicio, janela_fim, stamp_dir,
+            intervalo_segundos=CARIMBO_INTERVALO_FRAMES,
         )
 
         if not frames_stamp:
