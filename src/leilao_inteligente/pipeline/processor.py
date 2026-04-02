@@ -527,27 +527,29 @@ def _detectar_arrematacao_visual(
     detectados = 0
     total_verificados = 0
 
-    for consolidado in consolidados:
+    for i, consolidado in enumerate(consolidados_ordenados):
         fim_lote = ts_fim.get(consolidado.lote_numero)
         if fim_lote is None:
             continue
 
-        # Janela: do último frame do lote até o início do próximo lote
+        # O carimbo VENDIDO aparece entre o último frame do lote e o início
+        # do próximo. Mas o gap entre lotes pode ser longo porque o leiloeiro
+        # negocia depois do último frame capturado pelo change detector.
+        # Janela: do último frame até 120s depois (ou início do próximo, o que for maior)
         inicio_prox = ts_inicio_prox.get(consolidado.lote_numero)
         if inicio_prox is not None:
-            # Gap entre lotes: extrair frames no gap inteiro
-            janela_inicio = fim_lote
-            janela_fim = inicio_prox
+            # Usar o maior entre: início do próximo lote ou último frame + 120s
+            # Pois o carimbo pode aparecer DEPOIS do início dos frames do próximo lote
+            janela_fim = max(inicio_prox, fim_lote + 60)
         else:
-            # Último lote: extrair 60s depois
-            janela_inicio = fim_lote
-            janela_fim = fim_lote + 60
+            janela_fim = fim_lote + 120
 
-        # Limitar janela a no máximo 120s (evitar lotes com gap enorme)
-        duracao = janela_fim - janela_inicio
-        if duracao > 120:
+        janela_inicio = fim_lote
+
+        # Limitar a 120s max
+        if janela_fim - janela_inicio > 120:
             janela_fim = janela_inicio + 120
-        if duracao < 3:
+        if janela_fim - janela_inicio < 3:
             continue
 
         frames_stamp = extrair_frames_janela(
