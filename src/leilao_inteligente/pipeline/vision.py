@@ -13,6 +13,8 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import httpx
+
 import cv2
 import numpy as np
 from google import genai
@@ -117,21 +119,78 @@ def _cache_key(overlay_bytes: bytes) -> str:
 
 
 def _cache_get(key: str) -> dict[str, object] | None:
-    """Busca resultado no cache. Retorna None se nao existe."""
+    """Busca resultado no cache local. Se não encontrar, tenta Supabase."""
     cache_file = CACHE_DIR / f"{key}.json"
-    if not cache_file.exists():
-        return None
-    try:
-        return json.loads(cache_file.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
+    if cache_file.exists():
+        try:
+            return json.loads(cache_file.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    # Fallback: buscar no Supabase Storage
+    dados = _cache_get_remote(key)
+    if dados is not None:
+        # Salvar localmente para próximas consultas
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(json.dumps(dados, ensure_ascii=False))
+    return dados
 
 
 def _cache_set(key: str, dados: dict[str, object]) -> None:
-    """Salva resultado no cache."""
+    """Salva resultado no cache local e no Supabase."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     cache_file = CACHE_DIR / f"{key}.json"
     cache_file.write_text(json.dumps(dados, ensure_ascii=False))
+    _cache_set_remote(key, dados)
+
+
+def _cache_get_remote(key: str) -> dict[str, object] | None:
+    """Busca cache no Supabase Storage."""
+    try:
+        settings = _get_settings_cached()
+        if not settings.supabase_url or not settings.supabase_service_role_key:
+            return None
+        resp = httpx.get(
+            f"{settings.supabase_url}/storage/v1/object/gemini-cache/{key}.json",
+            headers={"Authorization": f"Bearer {settings.supabase_service_role_key}"},
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return None
+
+
+def _cache_set_remote(key: str, dados: dict[str, object]) -> None:
+    """Salva cache no Supabase Storage (fire-and-forget)."""
+    try:
+        settings = _get_settings_cached()
+        if not settings.supabase_url or not settings.supabase_service_role_key:
+            return
+        httpx.post(
+            f"{settings.supabase_url}/storage/v1/object/gemini-cache/{key}.json",
+            headers={
+                "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                "Content-Type": "application/json",
+                "x-upsert": "true",
+            },
+            content=json.dumps(dados, ensure_ascii=False).encode(),
+            timeout=5,
+        )
+    except Exception:
+        pass
+
+
+def _get_settings_cached():
+    """Retorna settings cacheado (evita re-parsear .env a cada chamada)."""
+    global _settings_cache
+    if _settings_cache is None:
+        from leilao_inteligente.config import get_settings
+        _settings_cache = get_settings()
+    return _settings_cache
+
+_settings_cache = None
 
 
 # --- Frame ---
