@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { X, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -17,6 +17,58 @@ import { Paineis } from "@/components/paineis";
 import { useFiltros } from "@/hooks/use-filtros";
 import { api, type Lote } from "@/lib/api";
 import { formatBRL, formatLeilao } from "@/lib/format";
+
+function EditablePrice({
+  label,
+  value,
+  onSave,
+}: {
+  label: string;
+  value: number | null;
+  onSave: (v: number) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEdit = () => {
+    setDraft(value != null ? String(value) : "");
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const save = async () => {
+    const num = parseFloat(draft.replace(/[^\d.,]/g, "").replace(",", "."));
+    if (!isNaN(num) && num > 0) {
+      await onSave(num);
+    }
+    setEditing(false);
+  };
+
+  return (
+    <div>
+      <p className="text-[10px] text-muted-foreground">{label}</p>
+      {editing ? (
+        <input
+          ref={inputRef}
+          className="font-bold text-sm w-full bg-transparent border-b border-primary outline-none"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
+        />
+      ) : (
+        <p
+          className="font-bold text-sm cursor-pointer hover:text-primary flex items-center gap-1 group"
+          onClick={startEdit}
+        >
+          {formatBRL(value)}
+          <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50" />
+        </p>
+      )}
+    </div>
+  );
+}
 
 function youtubeEmbedUrl(watchUrl: string): string {
   const url = watchUrl
@@ -99,10 +151,24 @@ export function DashboardPage() {
                     <p className="text-[10px] text-muted-foreground">Idade</p>
                     <p className="font-medium">{selectedLote.idade_meses ? `${selectedLote.idade_meses} meses` : "—"}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Preço Final</p>
-                    <p className="font-bold text-sm">{formatBRL(selectedLote.preco_final)}</p>
-                  </div>
+                  <EditablePrice
+                    label="Preço Inicial"
+                    value={selectedLote.preco_inicial}
+                    onSave={async (v) => {
+                      await api.atualizarLote(selectedLote.id, { preco_inicial: v });
+                      setSelectedLote({ ...selectedLote, preco_inicial: v });
+                      queryClient.invalidateQueries({ queryKey: ["lotes"] });
+                    }}
+                  />
+                  <EditablePrice
+                    label="Preço Final"
+                    value={selectedLote.preco_final}
+                    onSave={async (v) => {
+                      await api.atualizarLote(selectedLote.id, { preco_final: v });
+                      setSelectedLote({ ...selectedLote, preco_final: v });
+                      queryClient.invalidateQueries({ queryKey: ["lotes"] });
+                    }}
+                  />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Status</p>
                     <Select

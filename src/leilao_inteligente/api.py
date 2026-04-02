@@ -1116,12 +1116,13 @@ def get_cookies_status():
 
 class LoteUpdate(BaseModel):
     status: str | None = None
+    preco_inicial: float | None = None
     preco_final: float | None = None
 
 
 @app.patch("/api/lotes/{lote_id}")
 def patch_lote(lote_id: int, update: LoteUpdate):
-    """Atualiza campos de um lote (ex: status manual)."""
+    """Atualiza campos de um lote (ex: status, preços manuais)."""
     session = get_session()
     try:
         lote = session.query(Lote).filter(Lote.id == lote_id).first()
@@ -1130,11 +1131,18 @@ def patch_lote(lote_id: int, update: LoteUpdate):
 
         if update.status is not None:
             lote.status = update.status
+        if update.preco_inicial is not None:
+            lote.preco_inicial = update.preco_inicial
         if update.preco_final is not None:
             lote.preco_final = update.preco_final
 
         session.commit()
-        return {"id": lote.id, "status": lote.status, "preco_final": float(lote.preco_final) if lote.preco_final else None}
+        return {
+            "id": lote.id,
+            "status": lote.status,
+            "preco_inicial": float(lote.preco_inicial) if lote.preco_inicial else None,
+            "preco_final": float(lote.preco_final) if lote.preco_final else None,
+        }
     finally:
         session.close()
 
