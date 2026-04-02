@@ -38,6 +38,28 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
                 pass
         resultado["lote_numero"] = lote_str
 
+    # Detectar inversao lote_numero ↔ quantidade
+    # Em alguns layouts, o Gemini troca os campos. Heuristica:
+    # - Se lote_numero é pequeno (1-9) e quantidade é grande (>20), provavelmente inverteu
+    # - A quantidade SEMPRE aparece antes de MACHO/VACA/FEMEA no overlay
+    lote_str = resultado.get("lote_numero")
+    qtd = resultado.get("quantidade")
+    if lote_str is not None and qtd is not None:
+        try:
+            lote_int = int(str(lote_str))
+            qtd_int = int(qtd)
+            # Lote 1-9 com qtd > 50 → provavelmente invertido
+            # (lotes pequenos com 50+ animais são raros; mais provável inversão)
+            if 1 <= lote_int <= 9 and qtd_int > 50:
+                logger.debug(
+                    "Inversao detectada: lote=%s qtd=%d → lote=%d qtd=%d",
+                    lote_str, qtd_int, qtd_int, lote_int,
+                )
+                resultado["lote_numero"] = str(qtd_int)
+                resultado["quantidade"] = lote_int
+        except (ValueError, TypeError):
+            pass
+
     # Normalizar preco
     preco = resultado.get("preco_lance")
     if isinstance(preco, str):
@@ -51,12 +73,12 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     # Ex: overlay mostra "2.700" mas Gemini le "27" ou "270"
     # Regra: se preco < 500, tentar ×10 e ×100. Usar o que cair na faixa 500-15000.
     preco_val = resultado.get("preco_lance")
-    if isinstance(preco_val, (int, float, Decimal)) and 0 < float(preco_val) < 500:
+    if isinstance(preco_val, (int, float, Decimal)) and 0 < float(preco_val) < 1000:
         p = float(preco_val)
         corrigido = None
-        if 500 <= p * 100 <= 15000:
+        if 1000 <= p * 100 <= 15000:
             corrigido = Decimal(str(preco_val)) * 100
-        elif 500 <= p * 10 <= 15000:
+        elif 1000 <= p * 10 <= 15000:
             corrigido = Decimal(str(preco_val)) * 10
         if corrigido:
             logger.debug("Preço corrigido: %s → %s (truncado pelo OCR)", preco_val, corrigido)
@@ -92,7 +114,12 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     if isinstance(raca, str):
         raca = raca.strip().title()
         # Mestiço, Mestico, Cruzado, Cruzada, etc → Mestiço
-        racas_mesticas = {"Mestico", "Mestiço", "Mestiça", "Cruzado", "Cruzada", "Cruzados", "Cruzadas", "Meio Sangue"}
+        racas_mesticas = {
+            "Mestico", "Mestiço", "Mestiça",
+            "Cruzado", "Cruzada", "Cruzados", "Cruzadas",
+            "Meio Sangue", "Cruz Ind", "Cruzamento Industrial",
+            "Cruz", "Cruz. Ind", "Cruz Industrial", "Cruza Industrial",
+        }
         resultado["raca"] = "Mestiço" if raca in racas_mesticas else raca
 
     # Normalizar cidade

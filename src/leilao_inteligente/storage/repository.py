@@ -30,7 +30,7 @@ def salvar_leilao(
         if existente:
             logger.info("Leilao ja existe (id=%d), atualizando...", existente.id)
             session.delete(existente)
-            session.flush()
+            session.commit()
 
         leilao = Leilao(
             canal_youtube=info.canal_youtube,

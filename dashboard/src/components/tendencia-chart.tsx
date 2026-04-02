@@ -8,7 +8,7 @@ import {
   CartesianGrid,
   Tooltip,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { api, type Filtros } from "@/lib/api";
 
 interface TendenciaChartProps {
@@ -50,10 +50,10 @@ export function TendenciaChart({ filtros }: TendenciaChartProps) {
               className="text-xs"
             />
             <Tooltip
-              formatter={(value: number) =>
-                value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+              formatter={(v: unknown) =>
+                Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
               }
-              labelFormatter={(label: string) => label}
+              labelFormatter={(label: unknown) => String(label)}
               contentStyle={{
                 background: "var(--popover)",
                 border: "1px solid var(--border)",

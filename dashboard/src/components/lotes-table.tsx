@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { api, type Filtros } from "@/lib/api";
+import { api, type Filtros, type Lote } from "@/lib/api";
 import { formatLeilao, formatCidade } from "@/lib/format";
 
 function formatBRL(value: number | null): string {
@@ -110,9 +110,16 @@ export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTablePro
                             ? new Date(lote.leilao_data).toLocaleDateString("pt-BR")
                             : "—"}
                         </TableCell>
-                        <TableCell className="px-2 text-muted-foreground truncate max-w-[120px]" title={lote.leilao_titulo ?? ""}>
+                        <TableCell className="px-2 text-muted-foreground truncate max-w-[160px]" title={lote.leilao_titulo ?? ""}>
                           {lote.leilao_titulo
-                            ? formatLeilao(lote.leilao_titulo)
+                            ? <>
+                                {formatLeilao(lote.leilao_titulo)}
+                                {lote.leilao_data && (
+                                  <span className="text-[9px] ml-1 opacity-60">
+                                    ({new Date(lote.leilao_data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })})
+                                  </span>
+                                )}
+                              </>
                             : "—"}
                         </TableCell>
                         <TableCell className="px-2 whitespace-nowrap">

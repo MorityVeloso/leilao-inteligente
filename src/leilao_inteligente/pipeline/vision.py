@@ -56,9 +56,17 @@ Se houver overlay com dados do lote, retorne APENAS este JSON sem markdown:
     "confianca": 0.95
 }
 
+ATENÇÃO — lote_numero vs quantidade:
+Em alguns layouts, "LOTE" aparece em uma linha e o NÚMERO DO LOTE aparece na linha de BAIXO (em fonte grande).
+A QUANTIDADE de animais aparece ANTES de "MACHO(S)", "VACA(S)", "FEMEA(S)", "NOVILHA(S)".
+Exemplo: se o overlay mostra "LOTE" acima, "145" grande abaixo, e "2 VACA(S) NELORE" ao lado,
+então lote_numero="145" e quantidade=2 (NÃO o contrário).
+O número que vem ANTES da raça/sexo é SEMPRE a quantidade.
+O número grande isolado perto de "LOTE" é SEMPRE o número do lote.
+
 Regras:
-- lote_numero: número/código do lote visível no overlay ("12", "0005", "G2")
-- quantidade: número de animais. Aparece como "5 MACHO(S)", "25 FEMEA(S)", etc
+- lote_numero: número/código do lote. Geralmente em destaque, isolado, perto da palavra "LOTE"
+- quantidade: número de animais. SEMPRE aparece ANTES de "MACHO(S)", "VACA(S)", "FEMEA(S)", "NOVILHA(S)"
 - raca: Nelore, Anelorado, Mestiço, Guzera, Senepol, Tabapua, Angus (apenas raça, sem condição)
 - sexo: "macho", "femea" ou "misto"
 - condicao: só fêmeas — "parida", "prenhe", "solteira", "desmamada". null se macho

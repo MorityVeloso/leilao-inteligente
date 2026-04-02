@@ -1,6 +1,7 @@
 """Download de videos do YouTube via yt-dlp."""
 
 import logging
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -27,6 +28,30 @@ def extrair_video_id(url: str) -> str:
     raise ValueError(f"Nao foi possivel extrair video ID de: {url}")
 
 
+def _baixar_via_proxy(url: str, output_path: Path, proxy_url: str) -> bool:
+    """Tenta baixar video via video-proxy remoto (sua maquina local)."""
+    import urllib.request
+    import shutil
+
+    video_id = extrair_video_id(url)
+    download_url = f"{proxy_url}/download?url={urllib.parse.quote(url)}"
+
+    logger.info("Baixando via video-proxy: %s", proxy_url)
+    try:
+        req = urllib.request.Request(download_url)
+        with urllib.request.urlopen(req, timeout=600) as response:
+            with open(output_path, "wb") as f:
+                shutil.copyfileobj(response, f)
+        size_mb = output_path.stat().st_size / 1024 / 1024
+        logger.info("Video baixado via proxy: %.1f MB", size_mb)
+        return True
+    except Exception as e:
+        logger.warning("Falha no video-proxy: %s", e)
+        if output_path.exists():
+            output_path.unlink()
+        return False
+
+
 def baixar_video(
     url: str,
     output_dir: Path | None = None,
@@ -34,13 +59,10 @@ def baixar_video(
 ) -> Path:
     """Baixa video do YouTube e retorna o caminho do arquivo.
 
-    Args:
-        url: URL do video no YouTube.
-        output_dir: Diretorio de saida. Padrao: data/videos/
-        cookies_file: Caminho para arquivo de cookies (opcional).
-
-    Returns:
-        Path do arquivo de video baixado.
+    Tenta na ordem:
+    1. Video-proxy remoto (sua maquina via Cloudflare Tunnel)
+    2. yt-dlp direto com cookies
+    3. yt-dlp direto sem cookies
     """
     output_dir = output_dir or VIDEOS_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -52,6 +74,14 @@ def baixar_video(
         logger.info("Video ja existe: %s", output_path)
         return output_path
 
+    # 1. Tentar via video-proxy (maquina local com IP residencial)
+    from leilao_inteligente.config import get_settings
+    proxy_url = get_settings().video_proxy_url
+    if proxy_url:
+        if _baixar_via_proxy(url, output_path, proxy_url):
+            return output_path
+
+    # 2. Tentar yt-dlp direto
     ydl_opts: dict[str, object] = {
         "format": "best[ext=mp4]/best",
         "outtmpl": str(output_path),
@@ -74,13 +104,37 @@ def baixar_video(
     return output_path
 
 
-def obter_info_video(url: str) -> dict[str, object]:
-    """Obtem metadados do video sem baixar."""
+def obter_info_video(url: str, cookies_file: str | None = None) -> dict[str, object]:
+    """Obtem metadados do video sem baixar.
+
+    Tenta via video-proxy primeiro, depois yt-dlp direto.
+    """
+    # 1. Tentar via video-proxy
+    from leilao_inteligente.config import get_settings
+    proxy_url = get_settings().video_proxy_url
+    if proxy_url:
+        try:
+            import urllib.request
+            import urllib.parse
+            import json
+            info_url = f"{proxy_url}/info?url={urllib.parse.quote(url)}"
+            req = urllib.request.Request(info_url)
+            with urllib.request.urlopen(req, timeout=60) as response:
+                data = json.loads(response.read())
+                if "error" not in data:
+                    logger.info("Info obtida via video-proxy")
+                    return data
+        except Exception as e:
+            logger.warning("Video-proxy info falhou: %s", e)
+
+    # 2. yt-dlp direto
     ydl_opts: dict[str, object] = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
     }
+    if cookies_file:
+        ydl_opts["cookiefile"] = cookies_file
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Play, MapPin, Loader2, CheckCircle2, XCircle, Zap, Clock } from "lucide-react";
+import { Play, MapPin, Loader2, CheckCircle2, XCircle, Zap, Clock, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,19 @@ interface Job {
 
 const MAX_JOBS = 5;
 
+const STATUS_LABELS: Record<string, string> = {
+  iniciando: "Iniciando...",
+  baixando: "Obtendo metadados...",
+  baixando_video: "Baixando vídeo...",
+  extraindo_frames: "Extraindo frames...",
+  detectando_mudancas: "Detectando mudanças...",
+  analisando_ia: "Analisando com IA...",
+  consolidando: "Consolidando lotes...",
+  refinando: "Refinando lotes...",
+  capturando_arrematacao: "Capturando arrematação...",
+  processando: "Processando...",
+};
+
 export function LeiloesPage() {
   const queryClient = useQueryClient();
   const { data: leiloes = [], isLoading: loading } = useQuery({
@@ -39,7 +52,9 @@ export function LeiloesPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const navigate = useNavigate();
 
-  const activeJobs = jobs.filter((j) => j.status !== "concluido" && j.status !== "erro" && j.status !== "cancelado");
+  const isFinished = (s: string) => s === "concluido" || s === "erro" || s === "cancelado";
+  const activeJobs = jobs.filter((j) => !isFinished(j.status));
+  const finishedJobs = jobs.filter((j) => isFinished(j.status));
   const canSubmit = url.trim() && activeJobs.length < MAX_JOBS;
 
   // Polling de todos os jobs ativos
@@ -160,24 +175,65 @@ export function LeiloesPage() {
             )}
           </div>
 
-          {/* Lista de jobs */}
-          {jobs.length > 0 && (
+          {/* Jobs ativos */}
+          {activeJobs.length > 0 && (
             <div className="space-y-1.5">
-              {jobs.map((job) => (
+              {activeJobs.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-md text-xs bg-blue-500/10 text-blue-500"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  <span className="font-medium">{STATUS_LABELS[job.status] ?? job.status}</span>
+                  {job.titulo && (
+                    <span className="text-muted-foreground truncate">— {job.titulo}</span>
+                  )}
+                  {job.batch && (
+                    <Badge className="bg-green-500/10 text-green-500 ml-1 text-[9px]">batch</Badge>
+                  )}
+                  <button
+                    className="ml-auto shrink-0 p-0.5 rounded hover:bg-red-500/20 transition-colors text-muted-foreground hover:text-red-500"
+                    onClick={async () => {
+                      await api.cancelarProcessamento(job.id);
+                      pollJobs();
+                    }}
+                    title="Cancelar"
+                  >
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Histórico de jobs finalizados */}
+          {finishedJobs.length > 0 && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Histórico</span>
+                <button
+                  className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-red-500 transition-colors"
+                  onClick={async () => {
+                    await api.limparProcessamentos();
+                    pollJobs();
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Limpar
+                </button>
+              </div>
+              {finishedJobs.map((job) => (
                 <div
                   key={job.id}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-xs ${
                     job.status === "concluido" ? "bg-green-500/10 text-green-500" :
-                    job.status === "erro" || job.status === "cancelado" ? "bg-red-500/10 text-red-500" :
-                    "bg-blue-500/10 text-blue-500"
+                    "bg-red-500/10 text-red-500"
                   }`}
                 >
                   {job.status === "concluido" ? (
                     <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                  ) : job.status === "erro" || job.status === "cancelado" ? (
-                    <XCircle className="h-3.5 w-3.5 shrink-0" />
                   ) : (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                    <XCircle className="h-3.5 w-3.5 shrink-0" />
                   )}
                   <span className="font-medium capitalize">{job.status}</span>
                   {job.titulo && (
@@ -191,18 +247,6 @@ export function LeiloesPage() {
                   )}
                   {job.batch && (
                     <Badge className="bg-green-500/10 text-green-500 ml-1 text-[9px]">batch</Badge>
-                  )}
-                  {job.status !== "concluido" && job.status !== "erro" && job.status !== "cancelado" && (
-                    <button
-                      className="ml-auto shrink-0 p-0.5 rounded hover:bg-red-500/20 transition-colors text-muted-foreground hover:text-red-500"
-                      onClick={async () => {
-                        await api.cancelarProcessamento(job.id);
-                        pollJobs();
-                      }}
-                      title="Cancelar"
-                    >
-                      <XCircle className="h-3.5 w-3.5" />
-                    </button>
                   )}
                 </div>
               ))}

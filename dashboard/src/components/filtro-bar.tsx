@@ -120,13 +120,19 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
   if (!opcoes) return null;
 
+  // Se leilao_id selecionado não existe mais na lista, calcular valor válido para o select
+  const leilaoIdValue = filtros.leilao_id !== undefined
+    && opcoes.leiloes?.some((l) => l.id === filtros.leilao_id)
+    ? String(filtros.leilao_id)
+    : "";
+
   return (
     <div className="space-y-2">
       {/* Filtros em linha unica com scroll */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         <Select
           value={filtros.raca ?? ""}
-          onValueChange={(v) => setFiltro("raca", v === "todas" ? undefined : v)}
+          onValueChange={(v) => setFiltro("raca", (v ?? "") === "todas" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.raca)}>
             <SelectValue placeholder="Raça" />
@@ -141,7 +147,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         <Select
           value={filtros.sexo ?? ""}
-          onValueChange={(v) => setFiltro("sexo", v === "todos" ? undefined : v)}
+          onValueChange={(v) => setFiltro("sexo", (v ?? "") === "todos" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[100px] h-8 text-xs", !!filtros.sexo)}>
             <SelectValue placeholder="Sexo" />
@@ -157,10 +163,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         <Select
           value={filtros.idade_min !== undefined ? String(filtros.idade_min) : ""}
           onValueChange={(v) => {
-            if (v === "todas") {
+            const val = v ?? "";
+            if (val === "todas") {
               setFaixaIdade(undefined, undefined);
             } else {
-              const idade = Number(v);
+              const idade = Number(val);
               setFaixaIdade(idade, idade);
             }
           }}
@@ -178,7 +185,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         <Select
           value={filtros.estado ?? ""}
-          onValueChange={(v) => setFiltro("estado", v === "todos" ? undefined : v)}
+          onValueChange={(v) => setFiltro("estado", (v ?? "") === "todos" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[90px] h-8 text-xs", !!filtros.estado)}>
             <SelectValue placeholder="Estado" />
@@ -194,7 +201,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         {opcoes.cidades && opcoes.cidades.length > 0 && (
           <Select
             value={filtros.cidade ?? ""}
-            onValueChange={(v) => setFiltro("cidade", v === "todas" ? undefined : v)}
+            onValueChange={(v) => setFiltro("cidade", (v ?? "") === "todas" ? undefined : (v ?? undefined))}
           >
             <SelectTrigger className={triggerClass("w-[120px] h-8 text-xs", !!filtros.cidade)}>
               <SelectValue placeholder="Cidade" />
@@ -211,10 +218,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         <Select
           value={filtros.data_inicio ? "custom" : String(filtros.dias ?? 60)}
           onValueChange={(v) => {
-            if (v !== "custom") {
+            const val = v ?? "";
+            if (val !== "custom") {
               setFiltro("data_inicio", undefined);
               setFiltro("data_fim", undefined);
-              setFiltro("dias", Number(v));
+              setFiltro("dias", Number(val));
             }
           }}
         >
@@ -246,12 +254,12 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         <Select
           value={filtros.fazenda ?? ""}
-          onValueChange={(v) => setFiltro("fazenda", v === "todas" ? undefined : v)}
+          onValueChange={(v) => setFiltro("fazenda", (v ?? "") === "todas" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", !!filtros.fazenda)}>
             <SelectValue placeholder="Fazenda" />
           </SelectTrigger>
-          <SelectContent position="popper" side="bottom" align="start" className="min-w-[280px]">
+          <SelectContent side="bottom" align="start" className="min-w-[280px]">
             <SelectItem value="todas">Todas</SelectItem>
             {opcoes.fazendas.map((f) => (
               <SelectItem key={f} value={f} className="text-xs">{f}</SelectItem>
@@ -260,7 +268,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         </Select>
         <Select
           value={filtros.status ?? ""}
-          onValueChange={(v) => setFiltro("status", v === "todos" ? undefined : v)}
+          onValueChange={(v) => setFiltro("status", (v ?? "") === "todos" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.status)}>
             <SelectValue placeholder="Status" />
@@ -275,7 +283,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         <Select
           value={filtros.condicao ?? ""}
-          onValueChange={(v) => setFiltro("condicao", v === "todas" ? undefined : v)}
+          onValueChange={(v) => setFiltro("condicao", (v ?? "") === "todas" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[120px] h-8 text-xs", !!filtros.condicao)}>
             <SelectValue placeholder="Condição" />
@@ -291,10 +299,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         <Select
           value={filtros.preco_min !== undefined ? `${filtros.preco_min}-${filtros.preco_max}` : ""}
           onValueChange={(v) => {
-            if (v === "todos") {
+            const val = v ?? "";
+            if (val === "todos") {
               setFaixaPreco(undefined, undefined);
             } else {
-              const [min, max] = v.split("-").map(Number);
+              const [min, max] = val.split("-").map(Number);
               setFaixaPreco(min, max);
             }
           }}
@@ -315,10 +324,11 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
         <Select
           value={filtros.qtd_min !== undefined ? `${filtros.qtd_min}-${filtros.qtd_max}` : ""}
           onValueChange={(v) => {
-            if (v === "todos") {
+            const val = v ?? "";
+            if (val === "todos") {
               setFaixaQtd(undefined, undefined);
             } else {
-              const [min, max] = v.split("-").map(Number);
+              const [min, max] = val.split("-").map(Number);
               setFaixaQtd(min, max);
             }
           }}
@@ -337,17 +347,22 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         {opcoes.leiloes && opcoes.leiloes.length > 0 && (
           <Select
-            value={filtros.leilao_id !== undefined ? String(filtros.leilao_id) : ""}
-            onValueChange={(v) => setFiltro("leilao_id", v === "todos" ? undefined : Number(v))}
+            value={leilaoIdValue}
+            onValueChange={(v) => setFiltro("leilao_id", (v ?? "") === "todos" ? undefined : Number(v))}
           >
-            <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", filtros.leilao_id !== undefined)}>
+            <SelectTrigger className={triggerClass("w-[140px] h-8 text-xs", leilaoIdValue !== "")}>
               <SelectValue placeholder="Leilão" />
             </SelectTrigger>
-            <SelectContent position="popper" side="bottom" align="start" className="min-w-[350px]">
+            <SelectContent side="bottom" align="start" className="min-w-[350px]">
               <SelectItem value="todos">Todos leilões</SelectItem>
               {opcoes.leiloes.map((l) => (
                 <SelectItem key={l.id} value={String(l.id)} className="text-xs">
                   {limparTituloLeilao(l.titulo)}
+                  {l.data && (
+                    <span className="text-[10px] ml-1 opacity-60">
+                      ({new Date(l.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })})
+                    </span>
+                  )}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -356,7 +371,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
 
         <Select
           value={filtros.ordenar ?? ""}
-          onValueChange={(v) => setFiltro("ordenar", v === "padrao" ? undefined : v)}
+          onValueChange={(v) => setFiltro("ordenar", (v ?? "") === "padrao" ? undefined : (v ?? undefined))}
         >
           <SelectTrigger className={triggerClass("w-[130px] h-8 text-xs", !!filtros.ordenar)}>
             <SelectValue placeholder="Ordenar" />

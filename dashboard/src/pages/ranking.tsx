@@ -35,7 +35,11 @@ interface SelectedLote {
 function leilaoLabel(l: RankingLeilao): string {
   const nome = formatLeilao(l.titulo);
   const local = l.cidade ? formatCidade(l.cidade) : "";
-  return local ? `${nome} (${local})` : nome;
+  const data = l.data ? new Date(l.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }) : "";
+  const parts = [nome];
+  if (local) parts.push(local);
+  if (data) parts.push(data);
+  return parts.join(" - ");
 }
 
 function categoriaLabel(c: RankingCategoria): string {
@@ -225,7 +229,7 @@ export function RankingPage() {
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Estado</label>
-            <Select value={estado || "Todos"} onValueChange={(v) => setEstado(v === "Todos" ? "" : v)}>
+            <Select value={estado || "Todos"} onValueChange={(v) => setEstado(v === "Todos" ? "" : v ?? "")}>
               <SelectTrigger className="w-[90px] h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todos">Todos</SelectItem>
@@ -235,7 +239,7 @@ export function RankingPage() {
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Cidade</label>
-            <Select value={cidade || "Todas"} onValueChange={(v) => setCidade(v === "Todas" ? "" : v)}>
+            <Select value={cidade || "Todas"} onValueChange={(v) => setCidade(v === "Todas" ? "" : v ?? "")}>
               <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas">Todas</SelectItem>
@@ -249,7 +253,7 @@ export function RankingPage() {
         <div className="flex gap-3 flex-wrap items-end">
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Raça</label>
-            <Select value={raca || "Todas"} onValueChange={(v) => setRaca(v === "Todas" ? "" : v)}>
+            <Select value={raca || "Todas"} onValueChange={(v) => setRaca(v === "Todas" ? "" : v ?? "")}>
               <SelectTrigger className="w-[120px] h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas">Todas</SelectItem>
@@ -259,7 +263,7 @@ export function RankingPage() {
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Sexo</label>
-            <Select value={sexo || "Todos"} onValueChange={(v) => setSexo(v === "Todos" ? "" : v)}>
+            <Select value={sexo || "Todos"} onValueChange={(v) => setSexo(v === "Todos" ? "" : v ?? "")}>
               <SelectTrigger className="w-[100px] h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todos">Todos</SelectItem>
@@ -270,7 +274,7 @@ export function RankingPage() {
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-medium text-muted-foreground">Condição</label>
-            <Select value={condicao || "Todas"} onValueChange={(v) => setCondicao(v === "Todas" ? "" : v)}>
+            <Select value={condicao || "Todas"} onValueChange={(v) => setCondicao(v === "Todas" ? "" : v ?? "")}>
               <SelectTrigger className="w-[110px] h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="Todas">Todas</SelectItem>

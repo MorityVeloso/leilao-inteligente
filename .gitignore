@@ -21,6 +21,7 @@ ENV/
 # Data (videos e frames sao grandes)
 data/videos/
 data/frames/
+data/lote_frames/
 data/extracao_bruta.json
 data/frame_map.json
 data/frames_relevantes.txt

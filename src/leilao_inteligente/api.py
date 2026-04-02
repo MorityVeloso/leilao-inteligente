@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
@@ -179,7 +179,9 @@ def get_lotes(
     """Retorna lotes filtrados."""
     session = get_session()
     try:
-        q = session.query(Lote)
+        # Eager load leilão para evitar query N+1
+        from sqlalchemy.orm import joinedload
+        q = session.query(Lote).options(joinedload(Lote.leilao))
 
         q = _aplicar_filtros(
             q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
@@ -220,7 +222,8 @@ def _extrair_video_id(url: str) -> str | None:
 
 def _lote_to_dict(lote: Lote, session) -> dict:
     """Converte Lote pra dict serializavel."""
-    leilao = session.query(Leilao).filter(Leilao.id == lote.leilao_id).first()
+    # Usa o leilão já carregado via joinedload (evita query N+1)
+    leilao = lote.leilao if hasattr(lote, 'leilao') and lote.leilao else session.query(Leilao).filter(Leilao.id == lote.leilao_id).first()
 
     # Montar URL do YouTube com timestamp
     youtube_url = None
@@ -928,13 +931,19 @@ def _executar_processamento(job_id: str, url: str, batch: bool) -> None:
             return
 
         _atualizar_job(job_id, status="baixando")
-        info = obter_info_video(url)
+        from leilao_inteligente.config import get_settings as _get_settings
+        _settings = _get_settings()
+        info = obter_info_video(url, cookies_file=_settings.cookies_path)
 
         if _job_cancelado(job_id):
             return
 
         _atualizar_job(job_id, status="processando", titulo=str(info.get("title", "")))
-        lotes = processar_video(url, batch=batch)
+
+        def _progress_cb(fase: str) -> None:
+            _atualizar_job(job_id, status=fase)
+
+        lotes = processar_video(url, batch=batch, on_progress=_progress_cb)
 
         if _job_cancelado(job_id):
             return
@@ -1016,6 +1025,24 @@ def get_processamento_status(job_id: str):
         session.close()
 
 
+@app.delete("/api/processar/finalizados")
+def delete_processamentos_finalizados():
+    """Remove todos os jobs finalizados (concluido, erro, cancelado)."""
+    from leilao_inteligente.models.database import Processamento
+
+    session = get_session()
+    try:
+        removidos = (
+            session.query(Processamento)
+            .filter(Processamento.status.in_(["concluido", "erro", "cancelado"]))
+            .delete(synchronize_session="fetch")
+        )
+        session.commit()
+        return {"removidos": removidos}
+    finally:
+        session.close()
+
+
 @app.delete("/api/processar/{job_id}")
 def delete_processamento(job_id: str):
     """Cancela um processamento em andamento."""
@@ -1025,6 +1052,63 @@ def delete_processamento(job_id: str):
     _atualizar_job(job_id, status="cancelado", erro="Cancelado pelo usuário")
 
     return {"id": job_id, "status": "cancelado"}
+
+
+# --- Cookies YouTube ---
+
+
+@app.post("/api/cookies")
+async def upload_cookies(request: Request):
+    """Atualiza cookies do YouTube — salva no banco (persiste entre restarts)."""
+    import os
+    from leilao_inteligente.models.database import Configuracao
+    from datetime import datetime
+
+    body = await request.body()
+    if not body:
+        return JSONResponse({"error": "Body vazio"}, status_code=400)
+
+    body_text = body.decode("utf-8", errors="replace")
+
+    # 1. Salvar no banco (persistente)
+    session = get_session()
+    try:
+        existing = session.query(Configuracao).filter(Configuracao.chave == "youtube_cookies").first()
+        if existing:
+            existing.valor = body_text
+            existing.atualizado_em = datetime.utcnow()
+        else:
+            session.add(Configuracao(chave="youtube_cookies", valor=body_text, atualizado_em=datetime.utcnow()))
+        session.commit()
+    finally:
+        session.close()
+
+    # 2. Salvar em arquivo local tambem (para uso imediato)
+    cookies_path = "/app/cookies.txt" if os.path.exists("/app") else str(DATA_DIR / "cookies.txt")
+    with open(cookies_path, "wb") as f:
+        f.write(body)
+
+    logger.info("Cookies YouTube atualizados e persistidos no banco (%d bytes)", len(body))
+    return {"status": "ok", "bytes": len(body)}
+
+
+@app.get("/api/cookies/status")
+def get_cookies_status():
+    """Verifica se cookies do YouTube estao configurados."""
+    from leilao_inteligente.models.database import Configuracao
+
+    session = get_session()
+    try:
+        config = session.query(Configuracao).filter(Configuracao.chave == "youtube_cookies").first()
+        if config and config.valor:
+            return {
+                "configurado": True,
+                "bytes": len(config.valor),
+                "atualizado_em": config.atualizado_em.isoformat() if config.atualizado_em else None,
+            }
+    finally:
+        session.close()
+    return {"configurado": False}
 
 
 # --- Frames visuais ---

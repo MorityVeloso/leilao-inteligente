@@ -63,7 +63,7 @@ function LoteItem({
   isActive,
   onSelect,
 }: {
-  lote: { lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null };
+  lote: { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null };
   leilaoLabel: string;
   isActive: boolean;
   onSelect: (l: SelectedLote | null) => void;
@@ -282,7 +282,7 @@ export function ComparativoPage() {
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Estado</label>
-          <Select value={estado || "Todos"} onValueChange={(v) => setEstado(v === "Todos" ? "" : v)}>
+          <Select value={estado || "Todos"} onValueChange={(v) => setEstado(v === "Todos" ? "" : v ?? "")}>
             <SelectTrigger className="w-[90px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -297,7 +297,7 @@ export function ComparativoPage() {
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Cidade</label>
-          <Select value={cidade || "Todas"} onValueChange={(v) => setCidade(v === "Todas" ? "" : v)}>
+          <Select value={cidade || "Todas"} onValueChange={(v) => setCidade(v === "Todas" ? "" : v ?? "")}>
             <SelectTrigger className="w-[140px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -315,7 +315,7 @@ export function ComparativoPage() {
       <div className="flex gap-3 flex-wrap items-end">
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Leilão A (Compra)</label>
-          <Select value={leilaoA} onValueChange={setLeilaoA}>
+          <Select value={leilaoA} onValueChange={(v) => setLeilaoA(v ?? "")}>
             <SelectTrigger className="w-[320px] h-8 text-xs">
               <SelectValue placeholder="Selecione o leilão..." />
             </SelectTrigger>
@@ -339,7 +339,7 @@ export function ComparativoPage() {
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Leilão B (Venda)</label>
-          <Select value={leilaoB} onValueChange={setLeilaoB}>
+          <Select value={leilaoB} onValueChange={(v) => setLeilaoB(v ?? "")}>
             <SelectTrigger className="w-[320px] h-8 text-xs">
               <SelectValue placeholder="Selecione o leilão..." />
             </SelectTrigger>
@@ -366,7 +366,7 @@ export function ComparativoPage() {
       <div className="flex gap-3 flex-wrap items-end">
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Raça</label>
-          <Select value={raca || "Todas"} onValueChange={(v) => setRaca(v === "Todas" ? "" : v)}>
+          <Select value={raca || "Todas"} onValueChange={(v) => setRaca(v === "Todas" ? "" : v ?? "")}>
             <SelectTrigger className="w-[120px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -381,7 +381,7 @@ export function ComparativoPage() {
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Sexo</label>
-          <Select value={sexo || "Todos"} onValueChange={(v) => setSexo(v === "Todos" ? "" : v)}>
+          <Select value={sexo || "Todos"} onValueChange={(v) => setSexo(v === "Todos" ? "" : v ?? "")}>
             <SelectTrigger className="w-[100px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -395,7 +395,7 @@ export function ComparativoPage() {
 
         <div className="space-y-1">
           <label className="text-[10px] font-medium text-muted-foreground">Condição</label>
-          <Select value={condicao || "Todas"} onValueChange={(v) => setCondicao(v === "Todas" ? "" : v)}>
+          <Select value={condicao || "Todas"} onValueChange={(v) => setCondicao(v === "Todas" ? "" : v ?? "")}>
             <SelectTrigger className="w-[110px] h-8 text-xs">
               <SelectValue />
             </SelectTrigger>
@@ -519,7 +519,7 @@ export function ComparativoPage() {
                     />
                     <YAxis type="category" dataKey="name" className="text-[10px]" width={120} />
                     <Tooltip
-                      formatter={(v: number) => formatBRL(v)}
+                      formatter={(v: unknown) => formatBRL(Number(v))}
                       contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }}
                     />
                     <Legend wrapperStyle={{ fontSize: "11px" }} />

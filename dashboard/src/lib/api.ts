@@ -223,7 +223,10 @@ export const api = {
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ id: number; status: string; preco_final: number | null }>;
   },
-  frameUrl: (path: string) => `${API_URL}/api/frame/${path}`,
+  frameUrl: (path: string) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ganokhtivumdxwengvbe.supabase.co";
+    return `${supabaseUrl}/storage/v1/object/public/lote-frames/${path}`;
+  },
   processar: async (url: string, batch: boolean) => {
     const res = await fetch(`${API_URL}/api/processar`, {
       method: "POST",
@@ -239,6 +242,11 @@ export const api = {
     const res = await fetch(`${API_URL}/api/processar/${jobId}`, { method: "DELETE" });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ id: string; status: string }>;
+  },
+  limparProcessamentos: async () => {
+    const res = await fetch(`${API_URL}/api/processar/finalizados`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ removidos: number }>;
   },
   processarStatus: (jobId: string) =>
     fetchJson<{ status: string; titulo: string | null; lotes: number | null; leilao_id: number | null; erro: string | null }>(

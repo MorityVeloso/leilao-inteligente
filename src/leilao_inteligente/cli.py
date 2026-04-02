@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
 
+from leilao_inteligente.config import get_settings
 from leilao_inteligente.models.schemas import LeilaoInfo
 from leilao_inteligente.pipeline.downloader import obter_info_video, extrair_data_leilao, extrair_local_leilao, listar_videos_canal
 from leilao_inteligente.pipeline.processor import processar_video
@@ -52,7 +53,8 @@ def processar(
 
     try:
         # Obter info do video
-        info = obter_info_video(url)
+        settings = get_settings()
+        info = obter_info_video(url, cookies_file=settings.cookies_path)
         console.print(f"  Titulo: {info.get('title')}")
         console.print(f"  Canal: {info.get('channel')}")
 

@@ -88,7 +88,7 @@ export function AnalisePage() {
           <label className="text-[10px] font-medium text-muted-foreground">Período</label>
           <Select
             value={String(filtros.dias ?? 90)}
-            onValueChange={(v) => setFiltro("dias", Number(v))}
+            onValueChange={(v) => setFiltro("dias", Number(v ?? 90))}
           >
             <SelectTrigger className="w-[110px] h-8 text-xs">
               <SelectValue />
@@ -107,7 +107,7 @@ export function AnalisePage() {
           <label className="text-[10px] font-medium text-muted-foreground">Raça</label>
           <Select
             value={filtros.raca || "Todas"}
-            onValueChange={(v) => setFiltro("raca", v === "Todas" ? undefined : v)}
+            onValueChange={(v) => setFiltro("raca", v === "Todas" ? undefined : v ?? undefined)}
           >
             <SelectTrigger className="w-[120px] h-8 text-xs">
               <SelectValue />
@@ -125,7 +125,7 @@ export function AnalisePage() {
           <label className="text-[10px] font-medium text-muted-foreground">Sexo</label>
           <Select
             value={filtros.sexo === "macho" ? "Macho" : filtros.sexo === "femea" ? "Fêmea" : "Todos"}
-            onValueChange={(v) => setFiltro("sexo", v === "Todos" ? undefined : v.toLowerCase().replace("ê", "e"))}
+            onValueChange={(v) => setFiltro("sexo", v === "Todos" ? undefined : (v ?? "").toLowerCase().replace("ê", "e"))}
           >
             <SelectTrigger className="w-[100px] h-8 text-xs">
               <SelectValue />
@@ -142,7 +142,7 @@ export function AnalisePage() {
           <label className="text-[10px] font-medium text-muted-foreground">Condição</label>
           <Select
             value={filtros.condicao ? filtros.condicao.charAt(0).toUpperCase() + filtros.condicao.slice(1) : "Todas"}
-            onValueChange={(v) => setFiltro("condicao", v === "Todas" ? undefined : v.toLowerCase())}
+            onValueChange={(v) => setFiltro("condicao", v === "Todas" ? undefined : (v ?? "").toLowerCase())}
           >
             <SelectTrigger className="w-[110px] h-8 text-xs">
               <SelectValue />
@@ -160,7 +160,7 @@ export function AnalisePage() {
           <label className="text-[10px] font-medium text-muted-foreground">Estado</label>
           <Select
             value={filtros.estado || "Todos"}
-            onValueChange={(v) => setFiltro("estado", v === "Todos" ? undefined : v)}
+            onValueChange={(v) => setFiltro("estado", v === "Todos" ? undefined : v ?? undefined)}
           >
             <SelectTrigger className="w-[90px] h-8 text-xs">
               <SelectValue />
@@ -235,8 +235,8 @@ export function AnalisePage() {
               }))}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                 <XAxis dataKey="dataFmt" className="text-xs" />
-                <YAxis tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
-                <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
+                <YAxis tickFormatter={(v: unknown) => `R$${(Number(v) / 1000).toFixed(1)}k`} className="text-xs" />
+                <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                 <Line type="monotone" dataKey="media" stroke="hsl(142, 71%, 45%)" strokeWidth={2} dot={{ r: 5, fill: "hsl(142, 71%, 45%)" }} name="Média" connectNulls />
               </LineChart>
             </ResponsiveContainer>
@@ -261,9 +261,9 @@ export function AnalisePage() {
                   margin={{ left: 10 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis type="number" tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
+                  <XAxis type="number" tickFormatter={(v: unknown) => `R$${(Number(v) / 1000).toFixed(1)}k`} className="text-xs" />
                   <YAxis type="category" dataKey="fazenda" width={180} tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
+                  <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                   <Bar dataKey="media" fill="hsl(142, 71%, 45%)" radius={[0, 4, 4, 0]} name="Média" />
                 </BarChart>
               </ResponsiveContainer>
@@ -284,8 +284,8 @@ export function AnalisePage() {
                 <BarChart data={regioes}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                   <XAxis dataKey="estado" className="text-xs" />
-                  <YAxis tickFormatter={(v: number) => `R$${(v / 1000).toFixed(1)}k`} className="text-xs" />
-                  <Tooltip formatter={(v: number) => formatBRL(v)} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
+                  <YAxis tickFormatter={(v: unknown) => `R$${(Number(v) / 1000).toFixed(1)}k`} className="text-xs" />
+                  <Tooltip formatter={(v: unknown) => formatBRL(Number(v))} contentStyle={{ background: "var(--popover)", border: "1px solid var(--border)", borderRadius: "8px" }} />
                   <Bar dataKey="media" fill="#3b82f6" radius={[4, 4, 0, 0]} name="Média" />
                 </BarChart>
               </ResponsiveContainer>

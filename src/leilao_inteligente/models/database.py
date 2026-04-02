@@ -88,6 +88,16 @@ class Lote(Base):
         )
 
 
+class Configuracao(Base):
+    """Tabela de configuracoes persistentes (cookies, parametros, etc)."""
+
+    __tablename__ = "configuracoes"
+
+    chave: Mapped[str] = mapped_column(String(100), primary_key=True)
+    valor: Mapped[str | None] = mapped_column(String(500000), nullable=True)
+    atualizado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Processamento(Base):
     """Tabela de jobs de processamento (sobrevive a restarts)."""
 
@@ -96,7 +106,7 @@ class Processamento(Base):
     id: Mapped[str] = mapped_column(String(20), primary_key=True)
     url: Mapped[str] = mapped_column(String(500))
     batch: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="iniciando")
+    status: Mapped[str] = mapped_column(String(50), default="iniciando")
     titulo: Mapped[str | None] = mapped_column(String(500), nullable=True)
     lotes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     leilao_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

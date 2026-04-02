@@ -1,7 +1,6 @@
 """Orquestrador do pipeline de processamento de videos."""
 
 import logging
-import shutil
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -9,7 +8,7 @@ from pathlib import Path
 
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
-from leilao_inteligente.config import get_settings, DATA_DIR
+from leilao_inteligente.config import get_settings
 from leilao_inteligente.models.schemas import LoteConsolidado, LoteExtraido
 from leilao_inteligente.pipeline.change_detector import filtrar_frames_relevantes
 from leilao_inteligente.pipeline.downloader import baixar_video, extrair_video_id
@@ -22,9 +21,22 @@ logger = logging.getLogger(__name__)
 
 REPESCAGEM_MIN_MINUTOS = 10
 FRAMES_VISUAIS_POR_LOTE = 4
-LOTE_FRAMES_DIR = DATA_DIR / "lote_frames"
 JANELA_ARREMATACAO_SEGUNDOS = 5
 OUTLIER_GAP_SEGUNDOS = 300  # 5 min — frame isolado do cluster principal
+
+
+def _valor_mais_frequente_decimal(valores: list) -> Decimal | None:
+    """Retorna o valor decimal mais frequente, ou None se vazio."""
+    if not valores:
+        return None
+    contagem: dict[Decimal, int] = {}
+    for v in valores:
+        if v is not None:
+            key = Decimal(str(v))
+            contagem[key] = contagem.get(key, 0) + 1
+    if not contagem:
+        return None
+    return max(contagem, key=contagem.get)  # type: ignore[arg-type]
 
 
 def _valor_mais_frequente(valores: list[str | None]) -> str | None:
@@ -78,19 +90,19 @@ def salvar_frames_visuais(
     lote_numero: str,
     frame_paths: list[Path],
 ) -> list[str]:
-    """Copia frames visuais do lote pra diretorio permanente.
+    """Upload frames visuais do lote para Supabase Storage.
 
     Returns:
-        Lista de paths relativos salvos.
+        Lista de storage paths salvos (ex: video_id/lote/visual_1.jpg).
     """
-    lote_dir = LOTE_FRAMES_DIR / video_id / lote_numero
-    lote_dir.mkdir(parents=True, exist_ok=True)
+    from leilao_inteligente.storage.supabase_storage import upload_frame_file
 
     salvos: list[str] = []
     for i, src in enumerate(frame_paths):
-        dst = lote_dir / f"visual_{i + 1}.jpg"
-        shutil.copy2(src, dst)
-        salvos.append(str(dst.relative_to(DATA_DIR)))
+        storage_path = f"{video_id}/{lote_numero}/visual_{i + 1}.jpg"
+        url = upload_frame_file(storage_path, src)
+        if url:
+            salvos.append(storage_path)
 
     return salvos
 
@@ -131,26 +143,20 @@ def _filtrar_frames_outliers(
             else:
                 clusters.append([f])
 
-        # Manter apenas o maior cluster (se empate, manter todos — pode ser repescagem)
+        # Manter apenas os clusters maiores (se empate, pode ser repescagem legítima)
         maior_tamanho = max(len(c) for c in clusters)
         clusters_maiores = [c for c in clusters if len(c) == maior_tamanho]
+        frames_mantidos = [f for c in clusters_maiores for f in c]
 
-        if len(clusters_maiores) > 1:
-            # Empate: pode ser repescagem legítima, manter tudo
-            resultado.extend(frames)
-            continue
-
-        maior_cluster = clusters_maiores[0]
-
-        removidos = len(frames) - len(maior_cluster)
+        removidos = len(frames) - len(frames_mantidos)
         if removidos > 0:
             total_removidos += removidos
             logger.info(
-                "Lote %s: removidos %d frames outliers (%d clusters, mantendo %d frames)",
-                numero, removidos, len(clusters), len(maior_cluster),
+                "Lote %s: removidos %d frames outliers (%d clusters, mantendo %d de %d clusters maiores)",
+                numero, removidos, len(clusters), len(frames_mantidos), len(clusters_maiores),
             )
 
-        resultado.extend(maior_cluster)
+        resultado.extend(frames_mantidos)
 
     if total_removidos:
         logger.info("Total frames outliers removidos: %d", total_removidos)
@@ -253,8 +259,22 @@ def consolidar_lotes(
         primeiro = frames_com_preco[0].lote
         ultimo = frames_com_preco[-1].lote
 
-        preco_inicial = primeiro.preco_lance
-        preco_final = ultimo.preco_lance
+        # Preço inicial: moda dos primeiros frames (evita outlier de transição)
+        # Se todos forem diferentes, usa mediana dos primeiros
+        primeiros_precos = [f.lote.preco_lance for f in frames_com_preco[:5] if f.lote.preco_lance > 0]
+        moda_inicial = _valor_mais_frequente_decimal(primeiros_precos)
+        if moda_inicial and primeiros_precos.count(moda_inicial) > 1:
+            preco_inicial = moda_inicial
+        else:
+            preco_inicial = primeiro.preco_lance
+
+        # Preço final: moda dos últimos frames
+        ultimos_precos = [f.lote.preco_lance for f in frames_com_preco[-5:] if f.lote.preco_lance > 0]
+        moda_final = _valor_mais_frequente_decimal(ultimos_precos)
+        if moda_final and ultimos_precos.count(moda_final) > 1:
+            preco_final = moda_final
+        else:
+            preco_final = ultimo.preco_lance
 
         if aparicoes > 1:
             status = "repescagem"
@@ -442,16 +462,22 @@ def _pegar_ultima_aparicao_lcf(frames: list[LoteComFrame]) -> list[LoteComFrame]
     return frames[ultimo_gap_idx:]
 
 
-def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
+def processar_video(
+    url: str,
+    batch: bool = False,
+    on_progress: object = None,
+) -> list[LoteConsolidado]:
     """Pipeline completo: download → frames → deteccao → extracao → consolidacao.
 
     Args:
         url: URL do video no YouTube.
         batch: Se True, usa Batch API (50% mais barato, ate 24h).
                Usar apenas para videos gravados, nunca para ao vivo.
+        on_progress: Callback(fase: str) chamado a cada mudanca de fase.
     """
     settings = get_settings()
     extrair_fn = extrair_dados_lote_batch if batch else extrair_dados_lote
+    _notify = on_progress if callable(on_progress) else lambda _: None
 
     if batch:
         logger.info("Modo BATCH ativado (50%% desconto, processamento assincrono)")
@@ -465,16 +491,19 @@ def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
     ) as progress:
 
         # 1. Download
+        _notify("baixando_video")
         task = progress.add_task("Baixando video...", total=None)
-        video_path = baixar_video(url, cookies_file=settings.yt_dlp_cookies_file)
+        video_path = baixar_video(url, cookies_file=settings.cookies_path)
         progress.update(task, completed=True, description="Video baixado")
 
         # 2. Extrair frames
+        _notify("extraindo_frames")
         task = progress.add_task("Extraindo frames...", total=None)
         frames = extrair_frames(video_path, intervalo_segundos=settings.frame_interval_seconds)
         progress.update(task, completed=True, description=f"Extraidos {len(frames)} frames")
 
         # 3. Filtrar frames relevantes
+        _notify("detectando_mudancas")
         task = progress.add_task("Detectando mudancas...", total=None)
         frames_relevantes = filtrar_frames_relevantes(
             frames,
@@ -487,6 +516,7 @@ def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
         )
 
         # 4. Extrair dados via Gemini (overlay 420p, 20 requests paralelos)
+        _notify("analisando_ia")
         task = progress.add_task(
             "Extraindo dados via Gemini...", total=len(frames_relevantes)
         )
@@ -513,6 +543,7 @@ def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
         )
 
     # 5. Consolidar lotes (passada 1)
+    _notify("consolidando")
     consolidados = consolidar_lotes(lotes_com_frame, video_id=video_id)
 
     logger.info(
@@ -527,6 +558,7 @@ def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
     lotes_refinar = _identificar_lotes_pra_refinar(lotes_com_frame, min_frames=4)
 
     if lotes_refinar:
+        _notify("refinando")
         logger.info("Passada 2: refinando %d lotes com poucos frames", len(lotes_refinar))
 
         novos_lcfs = _refinar_lotes(
@@ -548,6 +580,7 @@ def processar_video(url: str, batch: bool = False) -> list[LoteConsolidado]:
     janelas_arrematacao = _identificar_janelas_arrematacao(lotes_com_frame)
 
     if janelas_arrematacao:
+        _notify("capturando_arrematacao")
         logger.info("Passada 3: capturando arrematacao de %d lotes", len(janelas_arrematacao))
 
         novos_lcfs_arremate = _refinar_lotes(
