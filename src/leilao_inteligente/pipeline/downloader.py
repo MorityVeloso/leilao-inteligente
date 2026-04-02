@@ -83,7 +83,7 @@ def baixar_video(
 
     # 2. Tentar yt-dlp direto
     ydl_opts: dict[str, object] = {
-        "format": "best[ext=mp4]/best",
+        "format": "best[height<=480][ext=mp4]/best[height<=480]/best",
         "outtmpl": str(output_path),
         "quiet": False,
         "no_warnings": False,

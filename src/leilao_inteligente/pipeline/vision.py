@@ -222,6 +222,63 @@ def _preparar_frame(frame_path: Path) -> bytes:
     return buf.tobytes()
 
 
+def _preparar_frame_completo(frame_path: Path) -> bytes:
+    """Redimensiona frame SEM crop (para detectar carimbo de arrematação no centro)."""
+    frame = cv2.imread(str(frame_path))
+    if frame is None:
+        raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
+    h, w = frame.shape[:2]
+    new_w = 320
+    new_h = int(h * new_w / w)
+    frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    return buf.tobytes()
+
+
+PROMPT_CARIMBO = """Olhe esta imagem de um leilão de gado ao vivo.
+Há algum indicador visual de VENDA/ARREMATAÇÃO no centro da tela?
+Exemplos: martelo, selo "VENDIDO", carimbo "ARREMATADO", animação de venda, banner de venda.
+NÃO considere textos do overlay normal (preço, lote, fazenda).
+Responda APENAS: SIM ou NAO"""
+
+
+def detectar_carimbo_arrematacao(frame_path: Path) -> bool:
+    """Detecta se frame contém carimbo visual de arrematação (martelo, VENDIDO, etc)."""
+    try:
+        frame_bytes = _preparar_frame_completo(frame_path)
+    except ValueError:
+        return False
+
+    key = "stamp_" + _cache_key(frame_bytes)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached.get("arrematado", False)
+
+    try:
+        settings = _get_settings_cached()
+        client = genai.Client(api_key=settings.gemini_api_key)
+        image_part = Part.from_bytes(data=frame_bytes, mime_type="image/jpeg")
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=[PROMPT_CARIMBO, image_part],
+            config=GenerateContentConfig(temperature=0.0, max_output_tokens=10),
+        )
+        resultado = "SIM" in response.text.upper()
+        _cache_set(key, {"arrematado": resultado})
+        return resultado
+    except Exception as e:
+        logger.warning("Erro detectando carimbo: %s", e)
+        return False
+
+
+def detectar_carimbo_lote(frame_paths: list[Path]) -> bool:
+    """Verifica se algum dos frames contém carimbo de arrematação."""
+    for fp in frame_paths:
+        if detectar_carimbo_arrematacao(fp):
+            return True
+    return False
+
+
 # --- Gemini ---
 
 

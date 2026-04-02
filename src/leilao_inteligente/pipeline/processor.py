@@ -463,6 +463,93 @@ def _pegar_ultima_aparicao_lcf(frames: list[LoteComFrame]) -> list[LoteComFrame]
     return frames[ultimo_gap_idx:]
 
 
+CARIMBO_JANELA_ANTES = 2   # segundos antes do fim do lote
+CARIMBO_JANELA_DEPOIS = 5  # segundos depois do fim do lote
+
+
+def _detectar_arrematacao_visual(
+    video_path: Path,
+    consolidados: list[LoteConsolidado],
+    lotes_com_frame: list[LoteComFrame],
+    intervalo_original: int,
+) -> list[LoteConsolidado]:
+    """Passada 4: detecta carimbo visual de arrematação (VENDIDO, martelo, etc).
+
+    Para cada lote, extrai frames na transição (fim do lote → início do próximo)
+    e verifica se algum contém indicador visual de venda.
+    Se detectado, marca status = "arrematado".
+    """
+    from leilao_inteligente.config import FRAMES_DIR
+    from leilao_inteligente.pipeline.vision import detectar_carimbo_lote
+
+    if not consolidados:
+        return consolidados
+
+    video_name = video_path.stem
+    stamp_dir = FRAMES_DIR / video_name / "stamp"
+    stamp_dir.mkdir(parents=True, exist_ok=True)
+
+    # Calcular timestamp final de cada lote no vídeo
+    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+    for lcf in lotes_com_frame:
+        por_lote[lcf.lote.lote_numero].append(lcf)
+
+    detectados = 0
+    total_verificados = 0
+
+    for consolidado in consolidados:
+        frames_lote = por_lote.get(consolidado.lote_numero, [])
+        if not frames_lote:
+            continue
+
+        # Calcular timestamp final do lote no vídeo
+        timestamps: list[float] = []
+        for f in frames_lote:
+            nome = f.frame_path.stem
+            parts = nome.split("_")
+            try:
+                if parts[0] == "refine":
+                    ts = int(parts[1]) + (int(parts[2]) - 1)
+                else:
+                    ts = (int(parts[1]) - 1) * intervalo_original
+                timestamps.append(ts)
+            except (ValueError, IndexError):
+                continue
+
+        if not timestamps:
+            continue
+
+        ultimo_ts = max(timestamps)
+        inicio = max(0, ultimo_ts - CARIMBO_JANELA_ANTES)
+        fim = ultimo_ts + CARIMBO_JANELA_DEPOIS
+
+        # Extrair frames de 1fps na janela de transição
+        frames_stamp = extrair_frames_janela(
+            video_path, inicio, fim, stamp_dir,
+            intervalo_segundos=1,
+        )
+
+        if not frames_stamp:
+            continue
+
+        total_verificados += 1
+
+        if detectar_carimbo_lote(frames_stamp):
+            if consolidado.status != "arrematado":
+                logger.info(
+                    "Lote %s: carimbo VENDIDO detectado → arrematado (era %s)",
+                    consolidado.lote_numero, consolidado.status,
+                )
+                consolidado.status = "arrematado"
+            detectados += 1
+
+    logger.info(
+        "Passada 4: %d/%d lotes com carimbo de arrematação",
+        detectados, total_verificados,
+    )
+    return consolidados
+
+
 def processar_video(
     url: str,
     batch: bool = False,
@@ -597,6 +684,12 @@ def processar_video(
                 "Passada 3: +%d frames → %d lotes finais",
                 len(novos_lcfs_arremate), len(consolidados),
             )
+
+    # 8. Passada 4: detectar carimbo visual de arrematação (VENDIDO, martelo, etc)
+    _notify("detectando_arrematacao")
+    consolidados = _detectar_arrematacao_visual(
+        video_path, consolidados, lotes_com_frame, settings.frame_interval_seconds,
+    )
 
     return consolidados
 
