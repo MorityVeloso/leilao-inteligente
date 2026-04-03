@@ -137,20 +137,21 @@ def _aplicar_filtros(
             query = query.join(Leilao, isouter=True)
             joined_leilao = True
         query = query.filter(Leilao.local_cidade == cidade)
+    data_col = func.coalesce(Leilao.data_leilao, Leilao.processado_em)
     if data_inicio or data_fim:
         if not joined_leilao:
             query = query.join(Leilao, isouter=True)
             joined_leilao = True
         if data_inicio:
-            query = query.filter(Leilao.processado_em >= datetime.fromisoformat(data_inicio))
+            query = query.filter(data_col >= datetime.fromisoformat(data_inicio))
         if data_fim:
-            query = query.filter(Leilao.processado_em <= datetime.fromisoformat(data_fim + "T23:59:59"))
+            query = query.filter(data_col <= datetime.fromisoformat(data_fim + "T23:59:59"))
     elif dias:
         desde = datetime.utcnow() - timedelta(days=dias)
         if not joined_leilao:
             query = query.join(Leilao, isouter=True)
             joined_leilao = True
-        query = query.filter(Leilao.processado_em >= desde)
+        query = query.filter(data_col >= desde)
     return query
 
 
@@ -297,16 +298,18 @@ def get_metricas(
             meio = datetime.utcnow() - timedelta(days=dias // 2)
             desde = datetime.utcnow() - timedelta(days=dias)
 
+            data_col = func.coalesce(Leilao.data_leilao, Leilao.processado_em)
+
             q_recente = session.query(func.avg(Lote.preco_final))
-            q_recente = q_recente.join(Leilao).filter(Leilao.processado_em >= meio)
+            q_recente = q_recente.join(Leilao).filter(data_col >= meio)
             q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
             q_recente = q_recente.filter(Lote.preco_final > 0)
             media_recente = q_recente.scalar()
 
             q_antigo = session.query(func.avg(Lote.preco_final))
             q_antigo = q_antigo.join(Leilao).filter(
-                Leilao.processado_em >= desde,
-                Leilao.processado_em < meio,
+                data_col >= desde,
+                data_col < meio,
             )
             q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
             q_antigo = q_antigo.filter(Lote.preco_final > 0)
@@ -345,7 +348,7 @@ def get_tendencia(
         desde = datetime.utcnow() - timedelta(days=dias)
 
         q = session.query(
-            Leilao.processado_em.label("data"),
+            func.coalesce(Leilao.data_leilao, Leilao.processado_em).label("data"),
             Leilao.titulo.label("leilao"),
             func.avg(Lote.preco_final).label("media"),
             func.count(Lote.id).label("lotes"),
@@ -353,9 +356,9 @@ def get_tendencia(
 
         q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado)
         q = q.filter(Lote.preco_final > 0)
-        q = q.filter(Leilao.processado_em >= desde)
+        q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
         q = q.group_by(Leilao.id)
-        q = q.order_by(Leilao.processado_em)
+        q = q.order_by(func.coalesce(Leilao.data_leilao, Leilao.processado_em))
 
         pontos = []
         for row in q.all():
@@ -439,7 +442,7 @@ def get_regioes(
         q = q.filter(Leilao.local_estado.isnot(None))
         if dias:
             desde = datetime.utcnow() - timedelta(days=dias)
-            q = q.filter(Leilao.processado_em >= desde)
+            q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
         q = q.group_by(Leilao.local_estado)
         q = q.order_by(func.count(Lote.id).desc())
 
@@ -535,7 +538,7 @@ def _query_medias(
         q = q.filter(Lote.preco_final <= preco_max)
     if dias and leilao_id is None:
         desde = datetime.utcnow() - timedelta(days=dias)
-        q = q.filter(Leilao.processado_em >= desde)
+        q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
 
     q = q.group_by(Lote.raca, Lote.sexo, Lote.condicao, Lote.idade_meses)
     return q.all()
@@ -870,7 +873,7 @@ def get_comparativo_evolucao(
             q = q.filter(Lote.idade_meses <= idade_max)
         if dias:
             desde = datetime.utcnow() - timedelta(days=dias)
-            q = q.filter(Leilao.processado_em >= desde)
+            q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
 
         q = q.group_by(Leilao.id)
         q = q.order_by(Leilao.processado_em)
