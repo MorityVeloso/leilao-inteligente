@@ -223,15 +223,18 @@ def _preparar_frame(frame_path: Path) -> bytes:
 
 
 def _preparar_frame_completo(frame_path: Path) -> bytes:
-    """Redimensiona frame SEM crop (para detectar carimbo de arrematação no centro)."""
+    """Redimensiona frame SEM crop (para detectar carimbo de arrematação no centro).
+
+    Usa 640px — máximo dentro de 1 tile do Gemini (768px), mesmo custo que 320px.
+    """
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
     h, w = frame.shape[:2]
-    new_w = 320
+    new_w = 640
     new_h = int(h * new_w / w)
     frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
-    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
     return buf.tobytes()
 
 
