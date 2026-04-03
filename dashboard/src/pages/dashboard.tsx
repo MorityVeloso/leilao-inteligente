@@ -18,14 +18,18 @@ import { useFiltros } from "@/hooks/use-filtros";
 import { api, type Lote } from "@/lib/api";
 import { formatBRL, formatLeilao } from "@/lib/format";
 
-function EditablePrice({
+function EditableField({
   label,
   value,
+  display,
   onSave,
+  bold,
 }: {
   label: string;
-  value: number | null;
-  onSave: (v: number) => Promise<void>;
+  value: string | number | null;
+  display?: string;
+  onSave: (v: string) => Promise<void>;
+  bold?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -38,9 +42,8 @@ function EditablePrice({
   };
 
   const save = async () => {
-    const num = parseFloat(draft.replace(/[^\d.,]/g, "").replace(",", "."));
-    if (!isNaN(num) && num > 0) {
-      await onSave(num);
+    if (draft !== String(value ?? "")) {
+      await onSave(draft);
     }
     setEditing(false);
   };
@@ -51,7 +54,7 @@ function EditablePrice({
       {editing ? (
         <input
           ref={inputRef}
-          className="font-bold text-sm w-full bg-transparent border-b border-primary outline-none"
+          className={`text-sm w-full bg-transparent border-b border-primary outline-none ${bold ? "font-bold" : "font-medium"}`}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={save}
@@ -59,10 +62,10 @@ function EditablePrice({
         />
       ) : (
         <p
-          className="font-bold text-sm cursor-pointer hover:text-primary flex items-center gap-1 group"
+          className={`text-sm cursor-pointer hover:text-primary flex items-center gap-1 group ${bold ? "font-bold" : "font-medium"}`}
           onClick={startEdit}
         >
-          {formatBRL(value)}
+          {display ?? (value != null ? String(value) : "—")}
           <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50" />
         </p>
       )}
@@ -131,7 +134,15 @@ export function DashboardPage() {
             </Card>
           )}
 
-          {selectedLote && (
+          {selectedLote && (() => {
+            const save = async (campo: string, valor: string) => {
+              const numFields = ["quantidade", "idade_meses", "preco_inicial", "preco_final"];
+              const parsed = numFields.includes(campo) ? parseFloat(valor.replace(/[^\d.,]/g, "").replace(",", ".")) : valor;
+              await api.atualizarLote(selectedLote.id, { [campo]: parsed } as Record<string, unknown>);
+              setSelectedLote({ ...selectedLote, [campo]: parsed });
+              queryClient.invalidateQueries({ queryKey: ["lotes"] });
+            };
+            return (
             <Card>
               <CardContent className="p-3 space-y-2">
                 <div className="grid grid-cols-2 gap-2 text-xs">
@@ -139,45 +150,20 @@ export function DashboardPage() {
                     <p className="text-[10px] text-muted-foreground">Leilão</p>
                     <p className="font-medium">{selectedLote.leilao_titulo ? formatLeilao(selectedLote.leilao_titulo) : "—"}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Quantidade</p>
-                    <p className="font-medium">{selectedLote.quantidade} cabeças</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Raça / Sexo</p>
-                    <p className="font-medium">{selectedLote.raca} {selectedLote.sexo === "macho" ? "M" : "F"}{selectedLote.condicao ? ` ${selectedLote.condicao}` : ""}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">Idade</p>
-                    <p className="font-medium">{selectedLote.idade_meses ? `${selectedLote.idade_meses} meses` : "—"}</p>
-                  </div>
-                  <EditablePrice
-                    label="Preço Inicial"
-                    value={selectedLote.preco_inicial}
-                    onSave={async (v) => {
-                      await api.atualizarLote(selectedLote.id, { preco_inicial: v });
-                      setSelectedLote({ ...selectedLote, preco_inicial: v });
-                      queryClient.invalidateQueries({ queryKey: ["lotes"] });
-                    }}
-                  />
-                  <EditablePrice
-                    label="Preço Final"
-                    value={selectedLote.preco_final}
-                    onSave={async (v) => {
-                      await api.atualizarLote(selectedLote.id, { preco_final: v });
-                      setSelectedLote({ ...selectedLote, preco_final: v });
-                      queryClient.invalidateQueries({ queryKey: ["lotes"] });
-                    }}
-                  />
+                  <EditableField label="Lote" value={selectedLote.lote_numero} bold onSave={(v) => save("lote_numero", v)} />
+                  <EditableField label="Quantidade" value={selectedLote.quantidade} display={`${selectedLote.quantidade} cab.`} onSave={(v) => save("quantidade", v)} />
+                  <EditableField label="Raça" value={selectedLote.raca} onSave={(v) => save("raca", v)} />
+                  <EditableField label="Sexo" value={selectedLote.sexo} onSave={(v) => save("sexo", v)} />
+                  <EditableField label="Idade (meses)" value={selectedLote.idade_meses} display={selectedLote.idade_meses ? `${selectedLote.idade_meses}m` : "—"} onSave={(v) => save("idade_meses", v)} />
+                  <EditableField label="Preço Inicial" value={selectedLote.preco_inicial} display={formatBRL(selectedLote.preco_inicial)} bold onSave={(v) => save("preco_inicial", v)} />
+                  <EditableField label="Preço Final" value={selectedLote.preco_final} display={formatBRL(selectedLote.preco_final)} bold onSave={(v) => save("preco_final", v)} />
                   <div>
                     <p className="text-[10px] text-muted-foreground">Status</p>
                     <Select
                       value={selectedLote.status === "arrematado" ? "Arrematado" : selectedLote.status === "repescagem" ? "Repescagem" : "Sem Disputa"}
                       onValueChange={async (v) => {
                         const newStatus = v === "Arrematado" ? "arrematado" : v === "Repescagem" ? "repescagem" : "incerto";
-                        await api.atualizarLote(selectedLote.id, { status: newStatus });
-                        setSelectedLote({ ...selectedLote, status: newStatus });
-                        queryClient.invalidateQueries({ queryKey: ["lotes"] });
+                        await save("status", newStatus);
                       }}
                     >
                       <SelectTrigger className="h-7 text-[10px] w-[120px]">
@@ -190,32 +176,44 @@ export function DashboardPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  {selectedLote.fazenda_vendedor && (
-                    <div className="col-span-2">
-                      <p className="text-[10px] text-muted-foreground">Fazenda</p>
-                      <p className="font-medium">{selectedLote.fazenda_vendedor}</p>
-                    </div>
-                  )}
-                  {selectedLote.revisar && (
-                    <div className="col-span-2">
-                      <button
-                        className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors"
-                        onClick={async () => {
-                          await api.atualizarLote(selectedLote.id, { revisar: false });
-                          setSelectedLote({ ...selectedLote, revisar: false });
-                          queryClient.invalidateQueries({ queryKey: ["lotes"] });
-                        }}
-                      >
-                        <AlertTriangle className="h-3 w-3" />
-                        Pendente revisão — clique para marcar como revisado
-                        <Check className="h-3 w-3 ml-auto" />
-                      </button>
-                    </div>
-                  )}
+                  <div className="col-span-2">
+                    <EditableField label="Fazenda" value={selectedLote.fazenda_vendedor} onSave={(v) => save("fazenda_vendedor", v)} />
+                  </div>
+                  <EditableField label="Condição" value={selectedLote.condicao} onSave={(v) => save("condicao", v)} />
+                  <div className="col-span-2">
+                    <button
+                      className={`flex items-center gap-1.5 w-full px-2 py-1 rounded text-[11px] transition-colors ${
+                        selectedLote.revisar
+                          ? "bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                          : "bg-green-500/10 text-green-600 hover:bg-green-500/20"
+                      }`}
+                      onClick={async () => {
+                        const novoValor = !selectedLote.revisar;
+                        await api.atualizarLote(selectedLote.id, { revisar: novoValor });
+                        setSelectedLote({ ...selectedLote, revisar: novoValor });
+                        queryClient.invalidateQueries({ queryKey: ["lotes"] });
+                      }}
+                    >
+                      {selectedLote.revisar ? (
+                        <>
+                          <AlertTriangle className="h-3 w-3" />
+                          Pendente revisão — clique para marcar como revisado
+                          <Check className="h-3 w-3 ml-auto" />
+                        </>
+                      ) : (
+                        <>
+                          <Check className="h-3 w-3" />
+                          Revisado — clique para marcar para revisão
+                          <AlertTriangle className="h-3 w-3 ml-auto" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
-          )}
+            );
+          })()}
 
           <MetricasCards filtros={filtros} />
           <TendenciaChart filtros={filtros} />

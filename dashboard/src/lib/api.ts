@@ -216,14 +216,14 @@ export const api = {
     fetchJson<Record<string, { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[]>>(
       "/api/ranking/lotes", buildSimpleParams(p)
     ),
-  atualizarLote: async (loteId: number, update: { status?: string; preco_inicial?: number; preco_final?: number; revisar?: boolean }) => {
+  atualizarLote: async (loteId: number, update: Partial<Pick<Lote, "lote_numero" | "quantidade" | "raca" | "sexo" | "condicao" | "idade_meses" | "fazenda_vendedor" | "preco_inicial" | "preco_final" | "status" | "revisar">>) => {
     const res = await fetch(`${API_URL}/api/lotes/${loteId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return res.json() as Promise<{ id: number; status: string; preco_inicial: number | null; preco_final: number | null; revisar: boolean }>;
+    return res.json() as Promise<{ id: number; ok: boolean }>;
   },
   frameUrl: (path: string) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ganokhtivumdxwengvbe.supabase.co";

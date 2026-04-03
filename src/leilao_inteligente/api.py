@@ -1117,38 +1117,36 @@ def get_cookies_status():
 
 
 class LoteUpdate(BaseModel):
-    status: str | None = None
+    lote_numero: str | None = None
+    quantidade: int | None = None
+    raca: str | None = None
+    sexo: str | None = None
+    condicao: str | None = None
+    idade_meses: int | None = None
+    fazenda_vendedor: str | None = None
     preco_inicial: float | None = None
     preco_final: float | None = None
+    status: str | None = None
     revisar: bool | None = None
 
 
 @app.patch("/api/lotes/{lote_id}")
 def patch_lote(lote_id: int, update: LoteUpdate):
-    """Atualiza campos de um lote (ex: status, preços, revisão)."""
+    """Atualiza qualquer campo de um lote (edição manual)."""
     session = get_session()
     try:
         lote = session.query(Lote).filter(Lote.id == lote_id).first()
         if not lote:
             return JSONResponse({"error": "Lote não encontrado"}, status_code=404)
 
-        if update.status is not None:
-            lote.status = update.status
-        if update.preco_inicial is not None:
-            lote.preco_inicial = update.preco_inicial
-        if update.preco_final is not None:
-            lote.preco_final = update.preco_final
-        if update.revisar is not None:
-            lote.revisar = int(update.revisar)
+        for campo, valor in update.model_dump(exclude_none=True).items():
+            if campo == "revisar":
+                setattr(lote, campo, int(valor))
+            else:
+                setattr(lote, campo, valor)
 
         session.commit()
-        return {
-            "id": lote.id,
-            "status": lote.status,
-            "preco_inicial": float(lote.preco_inicial) if lote.preco_inicial else None,
-            "preco_final": float(lote.preco_final) if lote.preco_final else None,
-            "revisar": bool(lote.revisar),
-        }
+        return {"id": lote.id, "ok": True}
     finally:
         session.close()
 
