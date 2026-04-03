@@ -174,7 +174,7 @@ def get_lotes(
     leilao_id: int | None = None,
     condicao: str | None = None,
     ordenar: str | None = None,
-    limite: int = Query(default=200, le=1000),
+    limite: int = Query(default=5000, le=10000),
 ):
     """Retorna lotes filtrados."""
     session = get_session()
