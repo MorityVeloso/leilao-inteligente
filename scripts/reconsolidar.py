@@ -26,6 +26,10 @@ logger = logging.getLogger(__name__)
 
 FRAMES_DIR = DATA_DIR / "frames"
 
+# Pular fallback Supabase (usa só cache local, muito mais rápido)
+import leilao_inteligente.pipeline.vision as _vision
+_vision._skip_remote_cache = True
+
 
 def reconsolidar_video(video_id: str) -> list:
     """Lê frames do disco, busca no cache, valida e reconsolida."""

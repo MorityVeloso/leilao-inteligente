@@ -118,6 +118,9 @@ def _cache_key(overlay_bytes: bytes) -> str:
     return hashlib.sha256(overlay_bytes).hexdigest()
 
 
+_skip_remote_cache = False  # Flag para pular fallback Supabase (reconsolidação)
+
+
 def _cache_get(key: str) -> dict[str, object] | None:
     """Busca resultado no cache local. Se não encontrar, tenta Supabase."""
     cache_file = CACHE_DIR / f"{key}.json"
@@ -126,6 +129,9 @@ def _cache_get(key: str) -> dict[str, object] | None:
             return json.loads(cache_file.read_text())
         except (json.JSONDecodeError, OSError):
             return None
+
+    if _skip_remote_cache:
+        return None
 
     # Fallback: buscar no Supabase Storage
     dados = _cache_get_remote(key)
