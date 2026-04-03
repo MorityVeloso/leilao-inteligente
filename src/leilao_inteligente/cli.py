@@ -59,7 +59,8 @@ def processar(
         console.print(f"  Canal: {info.get('channel')}")
 
         # Processar
-        lotes = processar_video(url, batch=batch)
+        canal = str(info.get("channel", ""))
+        lotes = processar_video(url, batch=batch, canal_youtube=canal)
 
         if not lotes:
             console.print("\n[yellow]Nenhum lote encontrado neste video.[/yellow]")

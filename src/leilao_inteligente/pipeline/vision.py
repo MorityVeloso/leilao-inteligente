@@ -239,10 +239,22 @@ def _preparar_frame_completo(frame_path: Path) -> bytes:
 
 
 PROMPT_CARIMBO = """Olhe esta imagem de um leilão de gado ao vivo.
-Há algum indicador visual de VENDA/ARREMATAÇÃO no centro da tela?
+Há algum indicador visual de VENDA/ARREMATAÇÃO na tela?
+Pode estar em qualquer posição (centro, canto, topo, base, lateral).
 Exemplos: martelo, selo "VENDIDO", carimbo "ARREMATADO", animação de venda, banner de venda.
 NÃO considere textos do overlay normal (preço, lote, fazenda).
 Responda APENAS: SIM ou NAO"""
+
+
+PROMPT_CALIBRACAO = """Olhe estas 2 imagens consecutivas de um leilão de gado ao vivo.
+A PRIMEIRA é o frame ANTES. A SEGUNDA é o frame DEPOIS.
+Entre os dois, apareceu algum indicador visual de venda/arrematação?
+
+Se SIM, descreva em uma linha:
+POSICAO|TEXTO|FORMATO|CORES
+Exemplo: centro|VENDIDO|martelo 3D|marrom, branco
+
+Se NÃO há indicador de venda, responda apenas: NAO"""
 
 
 def detectar_carimbo_arrematacao(frame_path: Path) -> bool:
@@ -272,6 +284,53 @@ def detectar_carimbo_arrematacao(frame_path: Path) -> bool:
     except Exception as e:
         logger.warning("Erro detectando carimbo: %s", e)
         return False
+
+
+def detectar_carimbo_calibracao(frame_antes_path: Path, frame_depois_path: Path) -> dict | None:
+    """Envia par de frames (antes/depois) ao Gemini para identificar padrão do carimbo.
+
+    Retorna dict com posicao, texto, formato, cores. Ou None se não é carimbo.
+    """
+    try:
+        bytes_antes = _preparar_frame_completo(frame_antes_path)
+        bytes_depois = _preparar_frame_completo(frame_depois_path)
+    except ValueError:
+        return None
+
+    key = "calib_" + _cache_key(bytes_antes + bytes_depois)
+    cached = _cache_get(key)
+    if cached is not None:
+        return cached if cached.get("posicao") else None
+
+    try:
+        settings = _get_settings_cached()
+        client = genai.Client(api_key=settings.gemini_api_key)
+        part_antes = Part.from_bytes(data=bytes_antes, mime_type="image/jpeg")
+        part_depois = Part.from_bytes(data=bytes_depois, mime_type="image/jpeg")
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=[PROMPT_CALIBRACAO, part_antes, part_depois],
+            config=GenerateContentConfig(temperature=0.0, max_output_tokens=100),
+        )
+        texto = response.text.strip().upper()
+
+        if "NAO" in texto and "|" not in texto:
+            _cache_set(key, {"arrematado": False})
+            return None
+
+        # Parsear: POSICAO|TEXTO|FORMATO|CORES
+        partes = texto.split("|")
+        resultado = {
+            "posicao": partes[0].strip().lower() if len(partes) > 0 else "",
+            "texto": partes[1].strip() if len(partes) > 1 else "",
+            "formato": partes[2].strip().lower() if len(partes) > 2 else "",
+            "cores": partes[3].strip().lower() if len(partes) > 3 else "",
+        }
+        _cache_set(key, resultado)
+        return resultado
+    except Exception as e:
+        logger.warning("Erro na calibração de carimbo: %s", e)
+        return None
 
 
 def detectar_carimbo_lote(frame_paths: list[Path]) -> bool:

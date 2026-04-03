@@ -938,12 +938,13 @@ def _executar_processamento(job_id: str, url: str, batch: bool) -> None:
         if _job_cancelado(job_id):
             return
 
+        canal = str(info.get("channel", ""))
         _atualizar_job(job_id, status="processando", titulo=str(info.get("title", "")))
 
         def _progress_cb(fase: str) -> None:
             _atualizar_job(job_id, status=fase)
 
-        lotes = processar_video(url, batch=batch, on_progress=_progress_cb)
+        lotes = processar_video(url, batch=batch, on_progress=_progress_cb, canal_youtube=canal)
 
         if _job_cancelado(job_id):
             return

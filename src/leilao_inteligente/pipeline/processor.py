@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import cv2
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
 
 from leilao_inteligente.config import get_settings
@@ -277,9 +278,17 @@ def consolidar_lotes(
             preco_final = ultimo.preco_lance
 
 
+        # Contar preços distintos (indicador de disputa)
+        precos_distintos = len(set(
+            f.lote.preco_lance for f in frames_com_preco if f.lote.preco_lance > 0
+        ))
+
         if aparicoes > 1:
             status = "repescagem"
         elif preco_final > preco_inicial:
+            status = "arrematado"
+        elif precos_distintos >= 3:
+            # 3+ preços diferentes = houve disputa ativa → arrematado
             status = "arrematado"
         else:
             status = "incerto"
@@ -463,41 +472,21 @@ def _pegar_ultima_aparicao_lcf(frames: list[LoteComFrame]) -> list[LoteComFrame]
     return frames[ultimo_gap_idx:]
 
 
-CARIMBO_INTERVALO_FRAMES = 2  # extrair 1 frame a cada 2s na janela (economiza Gemini)
-
-
-def _detectar_arrematacao_visual(
-    video_path: Path,
+def _calcular_janelas_carimbo(
     consolidados: list[LoteConsolidado],
     lotes_com_frame: list[LoteComFrame],
     intervalo_original: int,
-) -> list[LoteConsolidado]:
-    """Passada 4: detecta carimbo visual de arrematação (VENDIDO, martelo, etc).
+) -> dict[str, tuple[float, float]]:
+    """Calcula janela temporal (início, fim) para buscar carimbo de cada lote."""
+    por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
+    for lcf in lotes_com_frame:
+        por_lote[lcf.lote.lote_numero].append(lcf)
 
-    O carimbo aparece entre o fim de um lote e o início do próximo.
-    Para cada par de lotes consecutivos, extrai frames no gap entre eles
-    e verifica se algum contém indicador visual de venda.
-    """
-    from leilao_inteligente.config import FRAMES_DIR
-    from leilao_inteligente.pipeline.vision import detectar_carimbo_lote
-
-    if not consolidados:
-        return consolidados
-
-    video_name = video_path.stem
-    stamp_dir = FRAMES_DIR / video_name / "stamp"
-    stamp_dir.mkdir(parents=True, exist_ok=True)
-
-    # Calcular timestamp (segundo do vídeo) de cada lote
-    def _ultimo_ts_lote(lote_numero: str) -> float | None:
-        por_lote: dict[str, list[LoteComFrame]] = defaultdict(list)
-        for lcf in lotes_com_frame:
-            por_lote[lcf.lote.lote_numero].append(lcf)
+    def _ultimo_ts(lote_numero: str) -> float | None:
         frames = por_lote.get(lote_numero, [])
         ts_list: list[float] = []
         for f in frames:
-            nome = f.frame_path.stem
-            parts = nome.split("_")
+            parts = f.frame_path.stem.split("_")
             try:
                 if parts[0] == "refine":
                     ts_list.append(int(parts[1]) + (int(parts[2]) - 1))
@@ -507,73 +496,136 @@ def _detectar_arrematacao_visual(
                 continue
         return max(ts_list) if ts_list else None
 
-    # Ordenar lotes por timestamp de início
-    consolidados_ordenados = sorted(consolidados, key=lambda c: c.timestamp_inicio)
+    ordenados = sorted(consolidados, key=lambda c: c.timestamp_inicio)
 
-    # Construir mapa de segundo_video por lote
-    ts_fim: dict[str, float] = {}
-    ts_inicio_prox: dict[str, float] = {}
-    for i, c in enumerate(consolidados_ordenados):
-        fim = _ultimo_ts_lote(c.lote_numero)
-        if fim is not None:
-            ts_fim[c.lote_numero] = fim
-        # O início do próximo lote indica onde o gap termina
-        if i + 1 < len(consolidados_ordenados):
-            prox = consolidados_ordenados[i + 1]
-            prox_inicio = prox.segundo_video
-            if prox_inicio is not None:
-                ts_inicio_prox[c.lote_numero] = float(prox_inicio)
+    janelas: dict[str, tuple[float, float]] = {}
+    for i, c in enumerate(ordenados):
+        fim_lote = _ultimo_ts(c.lote_numero)
+        if fim_lote is None:
+            continue
+
+        if i + 1 < len(ordenados):
+            prox_inicio = ordenados[i + 1].segundo_video
+            janela_fim = max(float(prox_inicio or fim_lote + 120), fim_lote + 60)
+        else:
+            janela_fim = fim_lote + 120
+
+        # Carimbo pode aparecer durante os últimos 30s do lote (negociação final)
+        janela_inicio = max(0, fim_lote - 30)
+        if janela_fim - janela_inicio > 150:
+            janela_fim = janela_inicio + 150
+        if janela_fim - janela_inicio < 3:
+            continue
+
+        janelas[c.lote_numero] = (janela_inicio, janela_fim)
+
+    return janelas
+
+
+def _detectar_arrematacao_visual(
+    video_path: Path,
+    consolidados: list[LoteConsolidado],
+    lotes_com_frame: list[LoteComFrame],
+    intervalo_original: int,
+    canal: str | None = None,
+) -> list[LoteConsolidado]:
+    """Passada 4: detecta carimbo visual de arrematação (VENDIDO, martelo, etc).
+
+    1. Se canal novo → calibra o padrão do carimbo (posição, cores, formato)
+    2. Com perfil → pré-filtra localmente (change detection na região calibrada)
+    3. Sem perfil → fallback genérico (change detection frame inteiro)
+    4. Só candidatos fortes vão ao Gemini para confirmação
+    """
+    from leilao_inteligente.config import FRAMES_DIR
+    from leilao_inteligente.pipeline.vision import detectar_carimbo_arrematacao
+    from leilao_inteligente.pipeline.stamp_profile import (
+        obter_perfil, calibrar_carimbo, detectar_com_perfil,
+        change_score_frame_inteiro, DETECCAO_DEFAULT_THRESHOLD,
+    )
+
+    if not consolidados:
+        return consolidados
+
+    video_name = video_path.stem
+    stamp_dir = FRAMES_DIR / video_name / "stamp"
+    stamp_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Obter ou calibrar perfil do canal
+    perfil = obter_perfil(canal) if canal else None
+
+    if perfil is None and canal:
+        arrematados = [c for c in consolidados if c.status == "arrematado"]
+        if len(arrematados) >= 2:
+            _notify_progress = logger.info
+            logger.info("Canal novo '%s' — calibrando carimbo com %d lotes arrematados", canal, len(arrematados))
+            perfil = calibrar_carimbo(
+                video_path, canal, arrematados, lotes_com_frame, intervalo_original,
+            )
+        else:
+            logger.info("Canal '%s': poucos arrematados (%d), usando detecção genérica", canal, len(arrematados))
+
+    if perfil and perfil.get("confianca", 0) == 0:
+        logger.info("Canal '%s': perfil sem carimbo detectável, pulando passada 4", canal)
+        return consolidados
+
+    # 2. Calcular janelas temporais
+    janelas = _calcular_janelas_carimbo(consolidados, lotes_com_frame, intervalo_original)
 
     detectados = 0
     total_verificados = 0
 
-    for i, consolidado in enumerate(consolidados_ordenados):
-        fim_lote = ts_fim.get(consolidado.lote_numero)
-        if fim_lote is None:
+    for consolidado in consolidados:
+        janela = janelas.get(consolidado.lote_numero)
+        if not janela:
             continue
 
-        # O carimbo VENDIDO aparece entre o último frame do lote e o início
-        # do próximo. Mas o gap entre lotes pode ser longo porque o leiloeiro
-        # negocia depois do último frame capturado pelo change detector.
-        # Janela: do último frame até 120s depois (ou início do próximo, o que for maior)
-        inicio_prox = ts_inicio_prox.get(consolidado.lote_numero)
-        if inicio_prox is not None:
-            # Usar o maior entre: início do próximo lote ou último frame + 120s
-            # Pois o carimbo pode aparecer DEPOIS do início dos frames do próximo lote
-            janela_fim = max(inicio_prox, fim_lote + 60)
-        else:
-            janela_fim = fim_lote + 120
+        janela_inicio, janela_fim = janela
 
-        janela_inicio = fim_lote
-
-        # Limitar a 120s max
-        if janela_fim - janela_inicio > 120:
-            janela_fim = janela_inicio + 120
-        if janela_fim - janela_inicio < 3:
-            continue
-
+        # Extrair frames a cada 2s na janela (cobre carimbos de 3s+)
         frames_stamp = extrair_frames_janela(
             video_path, janela_inicio, janela_fim, stamp_dir,
-            intervalo_segundos=CARIMBO_INTERVALO_FRAMES,
+            intervalo_segundos=2,
         )
-
         if not frames_stamp:
             continue
 
         total_verificados += 1
 
-        if detectar_carimbo_lote(frames_stamp):
-            if consolidado.status != "arrematado":
-                logger.info(
-                    "Lote %s: carimbo VENDIDO detectado → arrematado (era %s)",
-                    consolidado.lote_numero, consolidado.status,
-                )
-                consolidado.status = "arrematado"
-            detectados += 1
+        # 3. Pré-filtrar localmente → candidatos
+        candidatos: list[Path] = []
+        prev_frame = None
+        for fp in frames_stamp:
+            frame = cv2.imread(str(fp))
+            if frame is None:
+                continue
+            if prev_frame is not None:
+                if perfil and perfil.get("regiao"):
+                    eh_candidato = detectar_com_perfil(frame, prev_frame, perfil)
+                else:
+                    score = change_score_frame_inteiro(prev_frame, frame)
+                    eh_candidato = score > DETECCAO_DEFAULT_THRESHOLD
+                if eh_candidato:
+                    candidatos.append(fp)
+            prev_frame = frame
+
+        if not candidatos:
+            continue
+
+        # 4. Só candidatos vão ao Gemini
+        for fp in candidatos:
+            if detectar_carimbo_arrematacao(fp):
+                if consolidado.status != "arrematado":
+                    logger.info(
+                        "Lote %s: carimbo VENDIDO detectado → arrematado (era %s)",
+                        consolidado.lote_numero, consolidado.status,
+                    )
+                    consolidado.status = "arrematado"
+                detectados += 1
+                break
 
     logger.info(
-        "Passada 4: %d/%d lotes com carimbo de arrematação",
-        detectados, total_verificados,
+        "Passada 4: %d/%d lotes com carimbo de arrematação (perfil: %s)",
+        detectados, total_verificados, "calibrado" if perfil else "genérico",
     )
     return consolidados
 
@@ -582,6 +634,7 @@ def processar_video(
     url: str,
     batch: bool = False,
     on_progress: object = None,
+    canal_youtube: str | None = None,
 ) -> list[LoteConsolidado]:
     """Pipeline completo: download → frames → deteccao → extracao → consolidacao.
 
@@ -717,6 +770,7 @@ def processar_video(
     _notify("detectando_arrematacao")
     consolidados = _detectar_arrematacao_visual(
         video_path, consolidados, lotes_com_frame, settings.frame_interval_seconds,
+        canal=canal_youtube,
     )
 
     return consolidados
