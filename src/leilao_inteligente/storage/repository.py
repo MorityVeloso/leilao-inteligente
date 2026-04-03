@@ -13,6 +13,36 @@ from leilao_inteligente.storage.db import get_session, init_db
 logger = logging.getLogger(__name__)
 
 
+def _precisa_revisar(lote: LoteConsolidado) -> bool:
+    """Detecta se lote tem indicadores de problema que precisa revisão manual.
+
+    Heurísticas:
+    1. Possível inversão lote/quantidade: lote 1-9 com qtd >= 10
+    2. Poucos frames com baixa confiança
+    3. Preço suspeitamente baixo (possível truncamento não corrigido)
+    """
+    try:
+        lote_int = int(lote.lote_numero)
+    except (ValueError, TypeError):
+        lote_int = None
+
+    # 1. Possível inversão lote ↔ quantidade
+    if lote_int is not None and 1 <= lote_int <= 9 and lote.quantidade >= 10:
+        return True
+
+    # 2. Poucos frames + baixa confiança
+    if lote.frames_analisados <= 2 and lote.confianca_media < 0.85:
+        return True
+
+    # 3. Preço inicial ou final zerado (mas o outro não)
+    if lote.preco_inicial == 0 and lote.preco_final > 0:
+        return True
+    if lote.preco_final == 0 and lote.preco_inicial > 0:
+        return True
+
+    return False
+
+
 def salvar_leilao(
     info: LeilaoInfo,
     lotes: list[LoteConsolidado],
@@ -70,6 +100,7 @@ def salvar_leilao(
                 status=lote_data.status,
                 frame_paths="|".join(lote_data.frame_paths) if lote_data.frame_paths else None,
                 segundo_video=lote_data.segundo_video,
+                revisar=int(_precisa_revisar(lote_data)),
             )
             session.add(lote)
 

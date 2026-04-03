@@ -258,6 +258,7 @@ def _lote_to_dict(lote: Lote, session) -> dict:
         "confianca_media": lote.confianca_media,
         "frame_paths": lote.frame_paths.split("|") if lote.frame_paths else [],
         "youtube_url": youtube_url,
+        "revisar": bool(lote.revisar) if lote.revisar else False,
     }
 
 
@@ -1119,11 +1120,12 @@ class LoteUpdate(BaseModel):
     status: str | None = None
     preco_inicial: float | None = None
     preco_final: float | None = None
+    revisar: bool | None = None
 
 
 @app.patch("/api/lotes/{lote_id}")
 def patch_lote(lote_id: int, update: LoteUpdate):
-    """Atualiza campos de um lote (ex: status, preços manuais)."""
+    """Atualiza campos de um lote (ex: status, preços, revisão)."""
     session = get_session()
     try:
         lote = session.query(Lote).filter(Lote.id == lote_id).first()
@@ -1136,6 +1138,8 @@ def patch_lote(lote_id: int, update: LoteUpdate):
             lote.preco_inicial = update.preco_inicial
         if update.preco_final is not None:
             lote.preco_final = update.preco_final
+        if update.revisar is not None:
+            lote.revisar = int(update.revisar)
 
         session.commit()
         return {
@@ -1143,6 +1147,7 @@ def patch_lote(lote_id: int, update: LoteUpdate):
             "status": lote.status,
             "preco_inicial": float(lote.preco_inicial) if lote.preco_inicial else None,
             "preco_final": float(lote.preco_final) if lote.preco_final else None,
+            "revisar": bool(lote.revisar),
         }
     finally:
         session.close()

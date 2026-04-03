@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Play } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, ChevronLeft, X, Play, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -37,10 +37,12 @@ interface LotesTableProps {
 }
 
 export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTableProps) {
-  const { data: lotes = [], isLoading: loading, isError } = useQuery({
+  const { data: lotesRaw = [], isLoading: loading, isError } = useQuery({
     queryKey: ["lotes", filtros],
     queryFn: () => api.lotes(filtros),
   });
+  // Filtro client-side para "pendentes de revisão"
+  const lotes = filtros.revisar ? lotesRaw.filter((l) => l.revisar) : lotesRaw;
   const [expandido, setExpandido] = useState<number | null>(null);
   const [lightbox, setLightbox] = useState<{ paths: string[]; index: number; lote: string } | null>(null);
 
@@ -127,7 +129,14 @@ export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTablePro
                             ? `${formatCidade(lote.local_cidade)}-${lote.local_estado.toUpperCase()}`
                             : "—"}
                         </TableCell>
-                        <TableCell className="px-2 font-mono font-bold">{lote.lote_numero}</TableCell>
+                        <TableCell className="px-2 font-mono font-bold">
+                          <span className="flex items-center gap-1">
+                            {lote.lote_numero}
+                            {lote.revisar && (
+                              <AlertTriangle className="h-3 w-3 text-amber-500" title="Pendente de revisão" />
+                            )}
+                          </span>
+                        </TableCell>
                         <TableCell className="px-2 text-right">{lote.quantidade}</TableCell>
                         <TableCell className="px-2">
                           {lote.raca}

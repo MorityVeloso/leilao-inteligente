@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarDays, X } from "lucide-react";
+import { CalendarDays, X, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -368,6 +368,18 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             </SelectContent>
           </Select>
         )}
+
+        <button
+          className={`flex items-center gap-1 h-8 px-2 rounded-md border text-xs transition-colors ${
+            filtros.revisar
+              ? "bg-amber-500/15 text-amber-600 border-amber-500/30"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+          onClick={() => setFiltro("revisar", filtros.revisar ? undefined : true)}
+        >
+          <AlertTriangle className="h-3.5 w-3.5" />
+          Revisão
+        </button>
 
         <Select
           value={filtros.ordenar ?? ""}

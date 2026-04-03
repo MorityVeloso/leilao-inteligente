@@ -19,6 +19,7 @@ export interface Filtros {
   leilao_id?: number;
   condicao?: string;
   ordenar?: string;
+  revisar?: boolean;
 }
 
 export interface Metricas {
@@ -54,6 +55,7 @@ export interface Lote {
   confianca_media: number;
   frame_paths: string[];
   youtube_url: string | null;
+  revisar: boolean;
 }
 
 export interface FiltrosOpcoes {
@@ -214,14 +216,14 @@ export const api = {
     fetchJson<Record<string, { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[]>>(
       "/api/ranking/lotes", buildSimpleParams(p)
     ),
-  atualizarLote: async (loteId: number, update: { status?: string; preco_inicial?: number; preco_final?: number }) => {
+  atualizarLote: async (loteId: number, update: { status?: string; preco_inicial?: number; preco_final?: number; revisar?: boolean }) => {
     const res = await fetch(`${API_URL}/api/lotes/${loteId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(update),
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
-    return res.json() as Promise<{ id: number; status: string; preco_inicial: number | null; preco_final: number | null }>;
+    return res.json() as Promise<{ id: number; status: string; preco_inicial: number | null; preco_final: number | null; revisar: boolean }>;
   },
   frameUrl: (path: string) => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://ganokhtivumdxwengvbe.supabase.co";

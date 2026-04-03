@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { X, Pencil } from "lucide-react";
+import { X, Pencil, AlertTriangle, Check } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -194,6 +194,22 @@ export function DashboardPage() {
                     <div className="col-span-2">
                       <p className="text-[10px] text-muted-foreground">Fazenda</p>
                       <p className="font-medium">{selectedLote.fazenda_vendedor}</p>
+                    </div>
+                  )}
+                  {selectedLote.revisar && (
+                    <div className="col-span-2">
+                      <button
+                        className="flex items-center gap-1.5 px-2 py-1 rounded text-[11px] bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors"
+                        onClick={async () => {
+                          await api.atualizarLote(selectedLote.id, { revisar: false });
+                          setSelectedLote({ ...selectedLote, revisar: false });
+                          queryClient.invalidateQueries({ queryKey: ["lotes"] });
+                        }}
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                        Pendente revisão — clique para marcar como revisado
+                        <Check className="h-3 w-3 ml-auto" />
+                      </button>
                     </div>
                   )}
                 </div>
