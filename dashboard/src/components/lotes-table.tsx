@@ -133,7 +133,7 @@ export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTablePro
                           <span className="flex items-center gap-1">
                             {lote.lote_numero}
                             {lote.revisar && (
-                              <AlertTriangle className="h-3 w-3 text-amber-500" title="Pendente de revisão" />
+                              <AlertTriangle className="h-3 w-3 text-amber-500" />
                             )}
                           </span>
                         </TableCell>
