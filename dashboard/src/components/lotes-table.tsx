@@ -97,7 +97,7 @@ export function LotesTable({ filtros, onPlayVideo, onSelectLote }: LotesTablePro
                   return (
                     <Fragment key={lote.id}>
                       <TableRow
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={`cursor-pointer hover:bg-muted/50 ${lote.revisar ? "bg-amber-500/8 border-l-2 border-l-amber-500" : ""}`}
                         onClick={() => setExpandido(expandido === lote.id ? null : lote.id)}
                       >
                         <TableCell className="px-2">
