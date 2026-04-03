@@ -245,39 +245,74 @@ def calibrar_carimbo(
 
         video_cap.release()
 
-        if not picos:
-            continue
+        encontrou_neste_lote = False
 
-        # Pegar os 2 maiores picos (provável aparição e desaparição do carimbo)
-        picos.sort(key=lambda x: x[2], reverse=True)
+        if picos:
+            # Pegar os 2 maiores picos (provável aparição e desaparição do carimbo)
+            picos.sort(key=lambda x: x[2], reverse=True)
 
-        for frame_com_path, frame_sem_path, score in picos[:2]:
-            # Confirmar com Gemini que é carimbo
-            resultado = detectar_carimbo_calibracao(frame_sem_path, frame_com_path)
-            if resultado is None:
-                continue
+            for frame_com_path, frame_sem_path, score in picos[:2]:
+                resultado = detectar_carimbo_calibracao(frame_sem_path, frame_com_path)
+                if resultado is None:
+                    continue
 
-            # Extrair bbox e cores
-            frame_com = cv2.imread(str(frame_com_path))
-            frame_sem = cv2.imread(str(frame_sem_path))
-            if frame_com is None or frame_sem is None:
-                continue
+                frame_com = cv2.imread(str(frame_com_path))
+                frame_sem = cv2.imread(str(frame_sem_path))
+                if frame_com is None or frame_sem is None:
+                    continue
 
-            bbox = _extrair_bbox_carimbo(frame_com, frame_sem)
-            cores = _extrair_cores_dominantes(frame_com, frame_sem)
+                bbox = _extrair_bbox_carimbo(frame_com, frame_sem)
+                cores = _extrair_cores_dominantes(frame_com, frame_sem)
 
-            if bbox:
-                amostras_confirmadas.append({
-                    "bbox": bbox,
-                    "cores": cores,
-                    "score": score,
-                    "descricao": resultado,
-                })
-                logger.info(
-                    "Carimbo encontrado lote %s: bbox=%s, score=%.1f%%",
-                    consolidado.lote_numero, bbox, score * 100,
-                )
-                break  # 1 amostra por lote é suficiente
+                if bbox:
+                    amostras_confirmadas.append({
+                        "bbox": bbox,
+                        "cores": cores,
+                        "score": score,
+                        "descricao": resultado,
+                    })
+                    logger.info(
+                        "Carimbo encontrado lote %s (pré-filtro): bbox=%s, score=%.1f%%",
+                        consolidado.lote_numero, bbox, score * 100,
+                    )
+                    encontrou_neste_lote = True
+                    break
+
+        # Fallback: se pré-filtro não achou, enviar frames direto ao Gemini
+        # (cobre canais com fade-in gradual onde change detection não pega)
+        if not encontrou_neste_lote:
+            from leilao_inteligente.pipeline.vision import detectar_carimbo_arrematacao
+
+            logger.info(
+                "Lote %s: pré-filtro não achou picos, tentando Gemini direto (sampling 8s)...",
+                consolidado.lote_numero,
+            )
+            for i, fp in enumerate(frames):
+                if i % 8 != 0:  # cada 8s
+                    continue
+                if detectar_carimbo_arrematacao(fp):
+                    # Achou! Usar frame anterior como referência para bbox/cores
+                    idx = max(0, frames.index(fp) - 1)
+                    frame_sem_path = frames[idx]
+                    frame_com = cv2.imread(str(fp))
+                    frame_sem = cv2.imread(str(frame_sem_path))
+                    if frame_com is None or frame_sem is None:
+                        continue
+
+                    bbox = _extrair_bbox_carimbo(frame_com, frame_sem)
+                    cores = _extrair_cores_dominantes(frame_com, frame_sem)
+
+                    amostras_confirmadas.append({
+                        "bbox": bbox or {"x1_pct": 0.1, "y1_pct": 0.2, "x2_pct": 0.9, "y2_pct": 0.8},
+                        "cores": cores,
+                        "score": 0.0,
+                        "descricao": {"posicao": "detectado via gemini direto"},
+                    })
+                    logger.info(
+                        "Carimbo encontrado lote %s (Gemini direto): bbox=%s",
+                        consolidado.lote_numero, bbox,
+                    )
+                    break
 
     # Agregar resultados
     if len(amostras_confirmadas) < CALIBRACAO_MIN_AMOSTRAS:
