@@ -18,6 +18,7 @@ export interface Filtros {
   qtd_max?: number;
   leilao_id?: number;
   condicao?: string;
+  casa_leilao?: string;
   ordenar?: string;
   revisar?: boolean;
 }
@@ -65,6 +66,7 @@ export interface FiltrosOpcoes {
   cidades: string[];
   fazendas: string[];
   leiloes: { id: number; titulo: string; local_cidade: string | null; local_estado: string | null; data: string | null }[];
+  casas_leilao: string[];
   idades: number[];
 }
 
@@ -118,6 +120,7 @@ function buildParams(filtros: Filtros): URLSearchParams {
   if (filtros.qtd_max !== undefined) params.set("qtd_max", String(filtros.qtd_max));
   if (filtros.leilao_id !== undefined) params.set("leilao_id", String(filtros.leilao_id));
   if (filtros.condicao) params.set("condicao", filtros.condicao);
+  if (filtros.casa_leilao) params.set("casa_leilao", filtros.casa_leilao);
   if (filtros.ordenar) params.set("ordenar", filtros.ordenar);
   return params;
 }

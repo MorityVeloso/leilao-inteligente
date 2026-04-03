@@ -345,6 +345,25 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
           </SelectContent>
         </Select>
 
+        {opcoes.casas_leilao && opcoes.casas_leilao.length > 0 && (
+          <Select
+            value={filtros.casa_leilao ?? ""}
+            onValueChange={(v) => setFiltro("casa_leilao", (v ?? "") === "todos" ? undefined : (v || undefined))}
+          >
+            <SelectTrigger className={triggerClass("w-[160px] h-8 text-xs", !!filtros.casa_leilao)}>
+              <SelectValue placeholder="Casa Leilão" />
+            </SelectTrigger>
+            <SelectContent side="bottom" align="start" className="min-w-[300px]">
+              <SelectItem value="todos">Todas casas</SelectItem>
+              {opcoes.casas_leilao.map((c) => (
+                <SelectItem key={c} value={c} className="text-xs">
+                  {limparTituloLeilao(c)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
         {opcoes.leiloes && opcoes.leiloes.length > 0 && (
           <Select
             value={leilaoIdValue}
@@ -358,6 +377,9 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
               {opcoes.leiloes.map((l) => (
                 <SelectItem key={l.id} value={String(l.id)} className="text-xs">
                   {limparTituloLeilao(l.titulo)}
+                  {l.local_cidade && (
+                    <span className="text-[10px] ml-1">- {l.local_cidade}</span>
+                  )}
                   {l.data && (
                     <span className="text-[10px] ml-1 opacity-60">
                       ({new Date(l.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })})

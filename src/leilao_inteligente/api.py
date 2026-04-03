@@ -76,6 +76,8 @@ def get_filtros():
             .all()
         ]
 
+        casas_leilao = sorted(set(l.titulo for l in session.query(Leilao).all() if l.titulo))
+
         return {
             "racas": racas,
             "sexos": sexos,
@@ -83,6 +85,7 @@ def get_filtros():
             "cidades": cidades,
             "fazendas": fazendas,
             "leiloes": leiloes_list,
+            "casas_leilao": casas_leilao,
             "idades": idades,
         }
     finally:
@@ -98,7 +101,7 @@ def _aplicar_filtros(
     data_inicio=None, data_fim=None,
     status=None,
     preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
-    leilao_id=None, condicao=None,
+    leilao_id=None, condicao=None, casa_leilao=None,
 ):
     """Aplica filtros ao query de lotes."""
     joined_leilao = False
@@ -137,6 +140,11 @@ def _aplicar_filtros(
             query = query.join(Leilao, isouter=True)
             joined_leilao = True
         query = query.filter(Leilao.local_cidade == cidade)
+    if casa_leilao:
+        if not joined_leilao:
+            query = query.join(Leilao, isouter=True)
+            joined_leilao = True
+        query = query.filter(Leilao.titulo == casa_leilao)
     data_col = func.coalesce(Leilao.data_leilao, Leilao.processado_em)
     if data_inicio or data_fim:
         if not joined_leilao:
@@ -174,6 +182,7 @@ def get_lotes(
     qtd_max: int | None = None,
     leilao_id: int | None = None,
     condicao: str | None = None,
+    casa_leilao: str | None = None,
     ordenar: str | None = None,
     limite: int = Query(default=5000, le=10000),
 ):
@@ -189,7 +198,7 @@ def get_lotes(
             estado=estado, cidade=cidade, fazenda=fazenda, dias=dias,
             data_inicio=data_inicio, data_fim=data_fim, status=status,
             preco_min=preco_min, preco_max=preco_max, qtd_min=qtd_min, qtd_max=qtd_max,
-            leilao_id=leilao_id, condicao=condicao,
+            leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao,
         )
         q = q.filter(Lote.preco_final > 0)
 
@@ -340,6 +349,11 @@ def get_tendencia(
     idade_min: int | None = None,
     idade_max: int | None = None,
     estado: str | None = None,
+    cidade: str | None = None,
+    fazenda: str | None = None,
+    status: str | None = None,
+    condicao: str | None = None,
+    casa_leilao: str | None = None,
     dias: int = 90,
 ):
     """Retorna dados pra grafico de tendencia (media por leilao)."""
@@ -354,9 +368,14 @@ def get_tendencia(
             func.count(Lote.id).label("lotes"),
         ).join(Leilao)
 
-        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado)
+        q = _aplicar_filtros(
+            q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
+            estado=estado, cidade=cidade, fazenda=fazenda, status=status, condicao=condicao,
+        )
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
+        if casa_leilao:
+            q = q.filter(Leilao.titulo == casa_leilao)
         q = q.group_by(Leilao.id)
         q = q.order_by(func.coalesce(Leilao.data_leilao, Leilao.processado_em))
 
