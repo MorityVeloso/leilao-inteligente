@@ -7,6 +7,7 @@ import { AnalisePage } from "@/pages/analise";
 import { ComparativoPage } from "@/pages/comparativo";
 import { RankingPage } from "@/pages/ranking";
 import { AoVivoPage } from "@/pages/ao-vivo";
+import { MercadoPage } from "@/pages/mercado";
 import { ConfigPage } from "@/pages/config";
 
 export default function App() {
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/analise" element={<AnalisePage />} />
             <Route path="/comparativo" element={<ComparativoPage />} />
             <Route path="/ranking" element={<RankingPage />} />
+            <Route path="/mercado" element={<MercadoPage />} />
             <Route path="/ao-vivo" element={<AoVivoPage />} />
             <Route path="/config" element={<ConfigPage />} />
           </Route>

@@ -4,12 +4,14 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     Numeric,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import (
@@ -124,3 +126,24 @@ class Processamento(Base):
             "leilao_id": self.leilao_id,
             "erro": self.erro,
         }
+
+
+class CotacaoMercado(Base):
+    """Cotações de referência do mercado bovino (CEPEA, Scot, Datagro, IMEA)."""
+
+    __tablename__ = "cotacoes_mercado"
+    __table_args__ = (
+        UniqueConstraint("data", "estado", "praca", "categoria", "raca", "sexo", "fonte", name="uq_cotacao"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    data: Mapped[datetime] = mapped_column(Date, nullable=False)
+    estado: Mapped[str] = mapped_column(String(2), nullable=False)
+    praca: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    categoria: Mapped[str] = mapped_column(String(30), nullable=False)
+    raca: Mapped[str] = mapped_column(String(20), nullable=False)
+    sexo: Mapped[str] = mapped_column(String(10), nullable=False)
+    valor: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    unidade: Mapped[str] = mapped_column(String(20), nullable=False)
+    fonte: Mapped[str] = mapped_column(String(30), nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

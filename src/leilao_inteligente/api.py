@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, case
 
 from leilao_inteligente.config import DATA_DIR
-from leilao_inteligente.models.database import Leilao, Lote
+from leilao_inteligente.models.database import CotacaoMercado, Leilao, Lote
 from leilao_inteligente.storage.db import get_session, init_db
 
 logger = logging.getLogger(__name__)
@@ -1182,3 +1182,160 @@ def get_frame(path: str):
     if not file_path.exists():
         return JSONResponse({"error": "Frame nao encontrado"}, status_code=404)
     return FileResponse(file_path)
+
+
+# --- Mercado (cotações de referência) ---
+
+
+@app.get("/api/mercado/cotacoes")
+def get_mercado_cotacoes(
+    estado: str | None = None,
+    categoria: str | None = None,
+    fonte: str | None = None,
+    raca: str | None = None,
+    dias: int = 7,
+):
+    """Lista cotações de mercado com filtros."""
+    session = get_session()
+    try:
+        desde = datetime.utcnow() - timedelta(days=dias)
+        q = session.query(CotacaoMercado).filter(CotacaoMercado.data >= desde.date())
+
+        if estado:
+            q = q.filter(CotacaoMercado.estado == estado)
+        if categoria:
+            q = q.filter(CotacaoMercado.categoria == categoria)
+        if fonte:
+            q = q.filter(CotacaoMercado.fonte == fonte)
+        if raca:
+            q = q.filter(CotacaoMercado.raca == raca)
+
+        q = q.order_by(CotacaoMercado.data.desc(), CotacaoMercado.estado)
+        rows = q.limit(2000).all()
+
+        return [
+            {
+                "id": r.id,
+                "data": r.data.isoformat() if r.data else None,
+                "estado": r.estado,
+                "praca": r.praca,
+                "categoria": r.categoria,
+                "raca": r.raca,
+                "sexo": r.sexo,
+                "valor": float(r.valor),
+                "unidade": r.unidade,
+                "fonte": r.fonte,
+            }
+            for r in rows
+        ]
+    finally:
+        session.close()
+
+
+@app.get("/api/mercado/resumo")
+def get_mercado_resumo(
+    estado: str | None = None,
+    categoria: str | None = None,
+):
+    """Resumo de cotações por estado e categoria (último dia disponível)."""
+    session = get_session()
+    try:
+        # Última data disponível
+        ultima_data = session.query(func.max(CotacaoMercado.data)).scalar()
+        if not ultima_data:
+            return {"data": None, "cotacoes": []}
+
+        q = session.query(
+            CotacaoMercado.estado,
+            CotacaoMercado.categoria,
+            CotacaoMercado.raca,
+            CotacaoMercado.sexo,
+            CotacaoMercado.unidade,
+            CotacaoMercado.fonte,
+            func.avg(CotacaoMercado.valor).label("media"),
+            func.min(CotacaoMercado.valor).label("minimo"),
+            func.max(CotacaoMercado.valor).label("maximo"),
+            func.count(CotacaoMercado.id).label("pracas"),
+        ).filter(CotacaoMercado.data == ultima_data)
+
+        if estado:
+            q = q.filter(CotacaoMercado.estado == estado)
+        if categoria:
+            q = q.filter(CotacaoMercado.categoria == categoria)
+
+        q = q.group_by(
+            CotacaoMercado.estado, CotacaoMercado.categoria,
+            CotacaoMercado.raca, CotacaoMercado.sexo,
+            CotacaoMercado.unidade, CotacaoMercado.fonte,
+        )
+        q = q.order_by(CotacaoMercado.estado, CotacaoMercado.categoria)
+
+        cotacoes = []
+        for r in q.all():
+            cotacoes.append({
+                "estado": r.estado,
+                "categoria": r.categoria,
+                "raca": r.raca,
+                "sexo": r.sexo,
+                "unidade": r.unidade,
+                "fonte": r.fonte,
+                "media": round(float(r.media), 2),
+                "minimo": round(float(r.minimo), 2),
+                "maximo": round(float(r.maximo), 2),
+                "pracas": r.pracas,
+            })
+
+        return {"data": ultima_data.isoformat(), "cotacoes": cotacoes}
+    finally:
+        session.close()
+
+
+@app.get("/api/mercado/filtros")
+def get_mercado_filtros():
+    """Retorna opções de filtro disponíveis para cotações de mercado."""
+    session = get_session()
+    try:
+        estados = [r[0] for r in session.query(CotacaoMercado.estado).distinct().order_by(CotacaoMercado.estado).all()]
+        categorias = [r[0] for r in session.query(CotacaoMercado.categoria).distinct().order_by(CotacaoMercado.categoria).all()]
+        fontes = [r[0] for r in session.query(CotacaoMercado.fonte).distinct().order_by(CotacaoMercado.fonte).all()]
+        racas = [r[0] for r in session.query(CotacaoMercado.raca).distinct().order_by(CotacaoMercado.raca).all()]
+
+        return {
+            "estados": estados,
+            "categorias": categorias,
+            "fontes": fontes,
+            "racas": racas,
+        }
+    finally:
+        session.close()
+
+
+@app.get("/api/mercado/tendencia")
+def get_mercado_tendencia(
+    estado: str | None = None,
+    categoria: str = "boi_gordo",
+    fonte: str | None = None,
+):
+    """Análise de tendência de mercado com regressão linear em múltiplas janelas."""
+    from leilao_inteligente.market.tendencia import analisar_tendencia_mercado
+    return analisar_tendencia_mercado(estado=estado, categoria=categoria, fonte=fonte)
+
+
+@app.get("/api/mercado/tendencia/resumo")
+def get_mercado_tendencia_resumo(estado: str | None = None):
+    """Resumo de tendência para as principais categorias."""
+    from leilao_inteligente.market.tendencia import resumo_tendencias
+    return resumo_tendencias(estado=estado)
+
+
+@app.post("/api/mercado/atualizar")
+def post_mercado_atualizar():
+    """Dispara coleta de cotações de mercado (todas as fontes)."""
+    from leilao_inteligente.market.collector import atualizar_mercado
+
+    try:
+        resultado = atualizar_mercado()
+        return resultado
+    except Exception as e:
+        logger.exception("Erro atualizando mercado")
+        return JSONResponse({"error": str(e)}, status_code=500)

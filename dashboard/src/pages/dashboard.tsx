@@ -14,6 +14,7 @@ import { MetricasCards } from "@/components/metricas-cards";
 import { TendenciaChart } from "@/components/tendencia-chart";
 import { LotesTable } from "@/components/lotes-table";
 import { Paineis } from "@/components/paineis";
+import { MercadoIndicador } from "@/components/mercado-indicador";
 import { useFiltros } from "@/hooks/use-filtros";
 import { api, type Lote } from "@/lib/api";
 import { formatBRL, formatLeilao } from "@/lib/format";
@@ -216,6 +217,7 @@ export function DashboardPage() {
           })()}
 
           <MetricasCards filtros={filtros} />
+          <MercadoIndicador />
           <TendenciaChart filtros={filtros} />
           <Paineis filtros={filtros} />
         </div>

@@ -196,6 +196,71 @@ function buildSimpleParams(obj: Record<string, string | number | undefined | nul
   return params;
 }
 
+export interface CotacaoMercado {
+  id: number;
+  data: string;
+  estado: string;
+  praca: string | null;
+  categoria: string;
+  raca: string;
+  sexo: string;
+  valor: number;
+  unidade: string;
+  fonte: string;
+}
+
+export interface MercadoResumo {
+  data: string | null;
+  cotacoes: {
+    estado: string;
+    categoria: string;
+    raca: string;
+    sexo: string;
+    unidade: string;
+    fonte: string;
+    media: number;
+    minimo: number;
+    maximo: number;
+    pracas: number;
+  }[];
+}
+
+export interface MercadoFiltros {
+  estados: string[];
+  categorias: string[];
+  fontes: string[];
+  racas: string[];
+}
+
+export interface TendenciaJanela {
+  tendencia: "alta_forte" | "alta" | "estavel" | "baixa" | "baixa_forte";
+  variacao_pct: number;
+  r_squared: number;
+  n_pontos: number;
+  preco_inicial: number;
+  preco_final: number;
+  janela_dias: number;
+}
+
+export interface TendenciaMercado {
+  categoria: string;
+  estado: string | null;
+  fonte: string | null;
+  janelas: Record<string, TendenciaJanela>;
+  ultimo_valor: number | null;
+  ultima_data: string | null;
+  insuficiente: boolean;
+  n_pontos: number;
+}
+
+export interface TendenciaResumoItem {
+  categoria: string;
+  ultimo_valor: number | null;
+  ultima_data: string | null;
+  tendencia: TendenciaJanela | null;
+  insuficiente: boolean;
+}
+
 export const api = {
   filtros: () => fetchJson<FiltrosOpcoes>("/api/filtros"),
   metricas: (f: Filtros) => fetchJson<Metricas>("/api/metricas", buildParams(f)),
@@ -257,4 +322,19 @@ export const api = {
     fetchJson<{ status: string; titulo: string | null; lotes: number | null; leilao_id: number | null; erro: string | null }>(
       `/api/processar/${jobId}`
     ),
+  // Mercado
+  mercadoCotacoes: (p: { estado?: string; categoria?: string; fonte?: string; raca?: string; dias?: number }) =>
+    fetchJson<CotacaoMercado[]>("/api/mercado/cotacoes", buildSimpleParams(p)),
+  mercadoResumo: (p?: { estado?: string; categoria?: string }) =>
+    fetchJson<MercadoResumo>("/api/mercado/resumo", buildSimpleParams(p || {})),
+  mercadoFiltros: () => fetchJson<MercadoFiltros>("/api/mercado/filtros"),
+  mercadoTendencia: (p: { estado?: string; categoria?: string; fonte?: string }) =>
+    fetchJson<TendenciaMercado>("/api/mercado/tendencia", buildSimpleParams(p)),
+  mercadoTendenciaResumo: (p?: { estado?: string }) =>
+    fetchJson<TendenciaResumoItem[]>("/api/mercado/tendencia/resumo", buildSimpleParams(p || {})),
+  mercadoAtualizar: async () => {
+    const res = await fetch(`${API_URL}/api/mercado/atualizar`, { method: "POST" });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ coletados: number; persistidos: number; fontes: string[]; data: string }>;
+  },
 };

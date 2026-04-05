@@ -8,6 +8,7 @@ import {
   Radio,
   Settings,
   Beef,
+  DollarSign,
 } from "lucide-react";
 import {
   Sidebar,
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { title: "Análise", icon: LineChart, path: "/analise" },
   { title: "Comparativo", icon: Scale, path: "/comparativo" },
   { title: "Ranking", icon: Trophy, path: "/ranking" },
+  { title: "Mercado", icon: DollarSign, path: "/mercado" },
   { title: "Ao Vivo", icon: Radio, path: "/ao-vivo" },
 ];
 
