@@ -82,7 +82,7 @@ Regras:
 - Campo não legível: null (não invente)
 """
 
-MODEL_NAME = "gemini-2.5-flash-lite"
+MODEL_NAME = "gemini-2.5-flash"
 
 _client: genai.Client | None = None
 
@@ -113,12 +113,22 @@ def _get_client() -> genai.Client:
 # --- Cache ---
 
 
-def _cache_key(overlay_bytes: bytes) -> str:
-    """Gera chave de cache a partir do hash SHA-256 do overlay."""
-    return hashlib.sha256(overlay_bytes).hexdigest()
+def _cache_key(overlay_bytes: bytes, prompt_hash: str = "") -> str:
+    """Gera chave de cache a partir do hash SHA-256 do overlay + prompt."""
+    h = hashlib.sha256(overlay_bytes)
+    if prompt_hash:
+        h.update(prompt_hash.encode())
+    return h.hexdigest()
 
 
 _skip_remote_cache = False  # Flag para pular fallback Supabase (reconsolidação)
+
+
+def _prompt_hash(prompt: str | None) -> str:
+    """Hash curto do prompt customizado (vazio se prompt padrão)."""
+    if not prompt or prompt == PROMPT_EXTRACAO:
+        return ""
+    return hashlib.sha256(prompt.encode()).hexdigest()[:12]
 
 
 def _cache_get(key: str) -> dict[str, object] | None:
@@ -350,14 +360,14 @@ def detectar_carimbo_lote(frame_paths: list[Path]) -> bool:
 # --- Gemini ---
 
 
-def _chamar_gemini(client: genai.Client, image_part: Part) -> object:
+def _chamar_gemini(client: genai.Client, image_part: Part, prompt: str = PROMPT_EXTRACAO) -> object:
     """Chama Gemini com retry em rate limit e timeout."""
     max_retries = 3
     for tentativa in range(max_retries):
         try:
             return client.models.generate_content(
                 model=MODEL_NAME,
-                contents=[PROMPT_EXTRACAO, image_part],
+                contents=[prompt, image_part],
                 config=GenerateContentConfig(
                     temperature=0.1,
                     max_output_tokens=1024,
@@ -401,7 +411,7 @@ def _parse_response(texto: str) -> dict[str, object] | None:
 # --- API publica ---
 
 
-def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
+def extrair_dados_frame(frame_path: Path, prompt: str | None = None) -> dict[str, object] | None:
     """Recorta overlay 420p, envia ao Gemini e extrai dados estruturados."""
     if not frame_path.exists():
         raise FileNotFoundError(f"Frame nao encontrado: {frame_path}")
@@ -413,7 +423,8 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
         return None
 
     # Verificar cache
-    key = _cache_key(overlay_bytes)
+    ph = _prompt_hash(prompt)
+    key = _cache_key(overlay_bytes, ph)
     cached = _cache_get(key)
     if cached is not None:
         logger.debug("Cache hit: %s", frame_path.name)
@@ -423,7 +434,7 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
 
     try:
         image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
-        response = _chamar_gemini(client, image_part)
+        response = _chamar_gemini(client, image_part, prompt=prompt or PROMPT_EXTRACAO)
     except Exception:
         logger.exception("Erro ao chamar Gemini para: %s", frame_path.name)
         return None
@@ -441,6 +452,7 @@ def extrair_dados_frame(frame_path: Path) -> dict[str, object] | None:
 def extrair_dados_lote(
     frames: list[Path],
     callback: object = None,
+    prompt: str | None = None,
 ) -> list[tuple[Path, dict[str, object]]]:
     """Extrai dados de multiplos frames em paralelo.
 
@@ -458,11 +470,13 @@ def extrair_dados_lote(
     frames_sem_cache: list[Path] = []
     cache_hits = 0
 
+    ph = _prompt_hash(prompt)
+
     # Primeiro: resolver o que ja tem cache (rapido, sem rede)
     for fp in frames:
         try:
             overlay_bytes = _preparar_frame(fp)
-            key = _cache_key(overlay_bytes)
+            key = _cache_key(overlay_bytes, ph)
             cached = _cache_get(key)
             if cached is not None:
                 resultados.append((fp, cached))
@@ -486,10 +500,10 @@ def extrair_dados_lote(
     def _processar_frame(frame_path: Path) -> tuple[Path, dict[str, object] | None]:
         try:
             overlay_bytes = _preparar_frame(frame_path)
-            key = _cache_key(overlay_bytes)
+            key = _cache_key(overlay_bytes, ph)
 
             image_part = Part.from_bytes(data=overlay_bytes, mime_type="image/jpeg")
-            response = _chamar_gemini(client, image_part)
+            response = _chamar_gemini(client, image_part, prompt=prompt or PROMPT_EXTRACAO)
             if response.text:
                 dados = _parse_response(response.text)
                 if dados:
@@ -552,6 +566,7 @@ def _criar_jsonl_batch(
     frame_map: dict[str, tuple[Path, str]],
     bucket_name: str,
     batch_id: str,
+    prompt: str | None = None,
 ) -> str:
     """Cria arquivo JSONL com requests e faz upload pro GCS.
 
@@ -569,7 +584,7 @@ def _criar_jsonl_batch(
                 "contents": [{
                     "role": "user",
                     "parts": [
-                        {"text": PROMPT_EXTRACAO},
+                        {"text": prompt or PROMPT_EXTRACAO},
                         {"fileData": {"fileUri": gcs_uri, "mimeType": "image/jpeg"}},
                     ],
                 }],
@@ -741,6 +756,7 @@ def _limpar_gcs_batch(bucket_name: str, batch_id: str) -> None:
 def extrair_dados_lote_batch(
     frames: list[Path],
     callback: object = None,
+    prompt: str | None = None,
 ) -> list[tuple[Path, dict[str, object]]]:
     """Extrai dados via Batch API (50% mais barato, para videos gravados).
 
@@ -766,12 +782,13 @@ def extrair_dados_lote_batch(
     resultados: list[tuple[Path, dict[str, object]]] = []
     frames_para_upload: list[tuple[Path, bytes, str]] = []
     cache_hits = 0
+    ph = _prompt_hash(prompt)
 
     # 1. Verificar cache local
     for fp in frames:
         try:
             overlay_bytes = _preparar_frame(fp)
-            key = _cache_key(overlay_bytes)
+            key = _cache_key(overlay_bytes, ph)
             cached = _cache_get(key)
             if cached is not None:
                 resultados.append((fp, cached))
@@ -802,7 +819,7 @@ def extrair_dados_lote_batch(
         logger.info("Batch: upload concluido (%d frames)", len(frame_map))
 
         # 3. Criar JSONL e submeter batch
-        jsonl_uri = _criar_jsonl_batch(frame_map, bucket_name, batch_id)
+        jsonl_uri = _criar_jsonl_batch(frame_map, bucket_name, batch_id, prompt=prompt)
         output_uri = f"gs://{bucket_name}/{batch_id}/output/"
 
         client = _get_client()

@@ -507,6 +507,35 @@ def get_leiloes():
         session.close()
 
 
+class LeilaoUpdate(BaseModel):
+    titulo: str | None = None
+    canal_youtube: str | None = None
+    local_cidade: str | None = None
+    local_estado: str | None = None
+    data_leilao: str | None = None
+
+
+@app.patch("/api/leiloes/{leilao_id}")
+def patch_leilao_info(leilao_id: int, update: LeilaoUpdate):
+    """Atualiza campos de um leilão processado."""
+    session = get_session()
+    try:
+        leilao = session.query(Leilao).filter(Leilao.id == leilao_id).first()
+        if not leilao:
+            return JSONResponse({"error": "Leilão não encontrado"}, status_code=404)
+
+        for campo, valor in update.model_dump(exclude_none=True).items():
+            if campo == "data_leilao" and valor:
+                setattr(leilao, campo, datetime.fromisoformat(valor))
+            else:
+                setattr(leilao, campo, valor)
+
+        session.commit()
+        return {"id": leilao.id, "ok": True}
+    finally:
+        session.close()
+
+
 # --- Comparativo ---
 
 
@@ -964,10 +993,21 @@ def _executar_processamento(job_id: str, url: str, batch: bool) -> None:
         canal = str(info.get("channel", ""))
         _atualizar_job(job_id, status="processando", titulo=str(info.get("title", "")))
 
+        # Buscar prompt calibrado para o canal (se existir)
+        prompt_cal = None
+        try:
+            from leilao_inteligente.pipeline.calibration import obter_calibracao, montar_prompt_gemini
+            cal = obter_calibracao(canal)
+            if cal:
+                prompt_cal = montar_prompt_gemini(cal)
+                logger.info("Usando prompt calibrado para canal '%s'", canal)
+        except Exception:
+            pass
+
         def _progress_cb(fase: str) -> None:
             _atualizar_job(job_id, status=fase)
 
-        lotes = processar_video(url, batch=batch, on_progress=_progress_cb, canal_youtube=canal)
+        lotes = processar_video(url, batch=batch, on_progress=_progress_cb, canal_youtube=canal, prompt_calibrado=prompt_cal)
 
         if _job_cancelado(job_id):
             return

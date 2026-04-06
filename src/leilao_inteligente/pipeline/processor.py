@@ -635,6 +635,7 @@ def processar_video(
     batch: bool = False,
     on_progress: object = None,
     canal_youtube: str | None = None,
+    prompt_calibrado: str | None = None,
 ) -> list[LoteConsolidado]:
     """Pipeline completo: download → frames → deteccao → extracao → consolidacao.
 
@@ -694,7 +695,8 @@ def processar_video(
             progress.advance(task)
 
         resultados_gemini = extrair_fn(
-            frames_relevantes, callback=_on_frame_done
+            frames_relevantes, callback=_on_frame_done,
+            prompt=prompt_calibrado,
         )
 
         lotes_com_frame: list[LoteComFrame] = []
@@ -766,12 +768,8 @@ def processar_video(
                 len(novos_lcfs_arremate), len(consolidados),
             )
 
-    # 8. Passada 4: detectar carimbo visual de arrematação (VENDIDO, martelo, etc)
-    _notify("detectando_arrematacao")
-    consolidados = _detectar_arrematacao_visual(
-        video_path, consolidados, lotes_com_frame, settings.frame_interval_seconds,
-        canal=canal_youtube,
-    )
+    # Passada 4 removida — carimbo agora é detectado na calibração por Claude
+    # O prompt calibrado instrui o Gemini a retornar "carimbo_vendido: true" quando aplicável
 
     return consolidados
 

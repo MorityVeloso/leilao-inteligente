@@ -284,6 +284,21 @@ export const api = {
     fetchJson<Record<string, { id: number; lote_numero: string; quantidade: number; preco_final: number | null; fazenda_vendedor: string | null; status: string; youtube_url: string | null }[]>>(
       "/api/ranking/lotes", buildSimpleParams(p)
     ),
+  atualizarLeilao: async (leilaoId: number, update: Partial<{
+    titulo: string;
+    canal_youtube: string;
+    local_cidade: string;
+    local_estado: string;
+    data_leilao: string;
+  }>) => {
+    const res = await fetch(`${API_URL}/api/leiloes/${leilaoId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(update),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ id: number; ok: boolean }>;
+  },
   atualizarLote: async (loteId: number, update: Partial<Pick<Lote, "lote_numero" | "quantidade" | "raca" | "sexo" | "condicao" | "idade_meses" | "fazenda_vendedor" | "preco_inicial" | "preco_final" | "status" | "revisar">>) => {
     const res = await fetch(`${API_URL}/api/lotes/${loteId}`, {
       method: "PATCH",
