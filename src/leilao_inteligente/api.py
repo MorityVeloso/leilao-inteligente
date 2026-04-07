@@ -284,6 +284,9 @@ def get_metricas(
     estado: str | None = None,
     fazenda: str | None = None,
     dias: int | None = None,
+    leilao_id: int | None = None,
+    condicao: str | None = None,
+    casa_leilao: str | None = None,
 ):
     """Retorna metricas resumidas (media, min, max, total)."""
     session = get_session()
@@ -296,7 +299,7 @@ def get_metricas(
             func.sum(Lote.quantidade).label("total_cabecas"),
         )
 
-        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, dias=dias)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, dias=dias, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao)
         q = q.filter(Lote.preco_final > 0)
 
         result = q.one()
@@ -311,7 +314,7 @@ def get_metricas(
 
             q_recente = session.query(func.avg(Lote.preco_final))
             q_recente = q_recente.join(Leilao).filter(data_col >= meio)
-            q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
+            q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao)
             q_recente = q_recente.filter(Lote.preco_final > 0)
             media_recente = q_recente.scalar()
 
@@ -320,7 +323,7 @@ def get_metricas(
                 data_col >= desde,
                 data_col < meio,
             )
-            q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda)
+            q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao)
             q_antigo = q_antigo.filter(Lote.preco_final > 0)
             media_antiga = q_antigo.scalar()
 
