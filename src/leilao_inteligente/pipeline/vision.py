@@ -33,10 +33,9 @@ CACHE_DIR = DATA_DIR / "gemini_cache"
 BATCH_GCS_PREFIX = "leilao_batch"
 BATCH_POLL_INTERVAL = 30  # segundos entre checks de status
 
-PROMPT_EXTRACAO = """Analise este frame de um leilão de gado brasileiro transmitido ao vivo.
+PROMPT_EXTRACAO = """Analise este frame COMPLETO de um leilão de gado brasileiro transmitido ao vivo.
 
-A imagem mostra o topo e a base do vídeo concatenados (o meio com o gado foi removido).
-O overlay do leilão contém textos sobrepostos com dados do lote sendo leiloado.
+A imagem mostra o frame inteiro do vídeo. O overlay do leilão contém textos sobrepostos com dados do lote.
 
 Se NÃO houver overlay de lote (pista vazia, intervalo, propaganda, telefones, tela de espera):
 {"erro": "nao_e_leilao"}
@@ -55,7 +54,8 @@ Se houver overlay com dados do lote, retorne APENAS este JSON sem markdown:
     "local_estado": "GO",
     "fazenda_vendedor": "SITIO BOA SORTE",
     "timestamp_video": null,
-    "confianca": 0.95
+    "confianca": 0.95,
+    "carimbo_vendido": false
 }
 
 ATENÇÃO — lote_numero vs quantidade:
@@ -74,11 +74,12 @@ Regras:
 - condicao: só fêmeas — "parida", "prenhe", "solteira", "desmamada". null se macho
 - idade_meses: converter "16 MS"=16, "2 ANOS"=24, "36 M"=36. null se não visível
 - preco_lance: valor em R$ por animal. Leia o número perto de "R$" ou "VALOR POR ANIMAL". Se o campo mostra "R$ ,00" ou "R$ .00" sem valor, retorne 0. Retorne número sem R$, pontos ou vírgula (ex: 2680.00)
-- local_cidade: cidade do leilão. Procure no topo do frame, em logos, banners, ou perto de "LIVE". Pode estar em texto pequeno dentro de logos amarelos/coloridos
+- local_cidade: cidade do leilão. Procure no topo do frame, em logos, banners, ou perto de "LIVE"
 - local_estado: sigla UF (2 letras). Geralmente junto com a cidade (ex: "Rianápolis-GO")
 - fazenda_vendedor: nome do vendedor/fazenda. Aparece como "VENDEDOR:", "FAZ.", "FAZENDA"
-- timestamp_video: hora do overlay (DD/MM/AAAA HH:MM:SS ou HH:MM:SS). Procure perto de "LIVE". null se não visível
+- timestamp_video: hora do overlay (DD/MM/AAAA HH:MM:SS ou HH:MM:SS). null se não visível
 - confianca: 0.0 a 1.0 (sua confiança na leitura)
+- carimbo_vendido: true se houver selo/carimbo de VENDIDO, ARREMATADO, martelo, ou qualquer indicador visual de venda sobreposto na tela. false se não houver
 - Campo não legível: null (não invente)
 """
 
@@ -213,28 +214,22 @@ _settings_cache = None
 
 
 def _preparar_frame(frame_path: Path) -> bytes:
-    """Recorta topo (15%) + base (50%) do frame, descartando o meio (gado).
+    """Redimensiona frame COMPLETO para 640px (1 tile Gemini).
 
-    O overlay de leilão fica sempre no topo e na base do frame.
-    O meio mostra o gado (irrelevante pra extração de dados).
-    Juntar topo+base reduz ~67% dos tokens sem perder informação.
+    Envia o frame inteiro em vez de crop topo+base.
+    Permite ao Gemini ver o carimbo VENDIDO (centro) + overlay (topo/base).
+    640px = 1 tile Gemini = mesmo custo que crop.
     """
     frame = cv2.imread(str(frame_path))
     if frame is None:
         raise ValueError(f"Nao foi possivel ler frame: {frame_path}")
 
     h, w = frame.shape[:2]
+    new_w = FRAME_WIDTH
+    new_h = int(h * new_w / w)
+    frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    topo = frame[0:int(h * TOPO_PERCENT / 100), :]
-    base = frame[int(h * (100 - BASE_PERCENT) / 100):, :]
-
-    combinado = np.vstack([topo, base])
-
-    ch, cw = combinado.shape[:2]
-    new_h = int(ch * FRAME_WIDTH / cw)
-    combinado = cv2.resize(combinado, (FRAME_WIDTH, new_h), interpolation=cv2.INTER_AREA)
-
-    _, buf = cv2.imencode(".jpg", combinado, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
     return buf.tobytes()
 
 
