@@ -102,9 +102,10 @@ def _aplicar_filtros(
     status=None,
     preco_min=None, preco_max=None, qtd_min=None, qtd_max=None,
     leilao_id=None, condicao=None, casa_leilao=None,
+    leilao_joined=False,
 ):
     """Aplica filtros ao query de lotes."""
-    joined_leilao = False
+    joined_leilao = leilao_joined
 
     if raca:
         query = query.filter(Lote.raca == raca)
@@ -314,7 +315,7 @@ def get_metricas(
 
             q_recente = session.query(func.avg(Lote.preco_final))
             q_recente = q_recente.join(Leilao).filter(data_col >= meio)
-            q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao)
+            q_recente = _aplicar_filtros(q_recente, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao, leilao_joined=True)
             q_recente = q_recente.filter(Lote.preco_final > 0)
             media_recente = q_recente.scalar()
 
@@ -323,7 +324,7 @@ def get_metricas(
                 data_col >= desde,
                 data_col < meio,
             )
-            q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao)
+            q_antigo = _aplicar_filtros(q_antigo, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, estado=estado, fazenda=fazenda, leilao_id=leilao_id, condicao=condicao, casa_leilao=casa_leilao, leilao_joined=True)
             q_antigo = q_antigo.filter(Lote.preco_final > 0)
             media_antiga = q_antigo.scalar()
 
@@ -374,6 +375,7 @@ def get_tendencia(
         q = _aplicar_filtros(
             q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max,
             estado=estado, cidade=cidade, fazenda=fazenda, status=status, condicao=condicao,
+            leilao_joined=True,
         )
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(func.coalesce(Leilao.data_leilao, Leilao.processado_em) >= desde)
@@ -459,7 +461,7 @@ def get_regioes(
             func.count(Lote.id).label("lotes"),
         ).join(Leilao)
 
-        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max)
+        q = _aplicar_filtros(q, raca=raca, sexo=sexo, idade_min=idade_min, idade_max=idade_max, leilao_joined=True)
         q = q.filter(Lote.preco_final > 0)
         q = q.filter(Leilao.local_estado.isnot(None))
         if dias:

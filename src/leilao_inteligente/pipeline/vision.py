@@ -92,8 +92,8 @@ def _get_client() -> genai.Client:
     """Inicializa e retorna o client Gemini (singleton).
 
     Suporta dois backends:
-    - aistudio: usa API key (GEMINI_API_KEY). Limite de 10k RPD.
-    - vertex: usa Google Cloud (GCP_PROJECT_ID). Pay-as-you-go, sem limite fixo.
+    - vertex: Google Cloud (GCP_PROJECT_ID). Pay-as-you-go, pricing mais baixo.
+    - aistudio: API key (GEMINI_API_KEY). Fallback para dev local.
     """
     global _client
     if _client is None:
@@ -104,7 +104,7 @@ def _get_client() -> genai.Client:
                 project=settings.gcp_project_id,
                 location=settings.gcp_location,
             )
-            logger.info("Gemini via Vertex AI (projeto=%s, regiao=%s)", settings.gcp_project_id, settings.gcp_location)
+            logger.info("Gemini via Vertex AI (projeto=%s)", settings.gcp_project_id)
         else:
             _client = genai.Client(api_key=settings.gemini_api_key)
             logger.info("Gemini via AI Studio")
@@ -356,8 +356,10 @@ def detectar_carimbo_lote(frame_paths: list[Path]) -> bool:
 
 
 def _chamar_gemini(client: genai.Client, image_part: Part, prompt: str = PROMPT_EXTRACAO) -> object:
-    """Chama Gemini com retry em rate limit e timeout."""
-    max_retries = 3
+    """Chama Gemini com retry em rate limit, timeout e indisponibilidade."""
+    from google.genai.types import ThinkingConfig
+
+    max_retries = 5
     for tentativa in range(max_retries):
         try:
             return client.models.generate_content(
@@ -366,6 +368,7 @@ def _chamar_gemini(client: genai.Client, image_part: Part, prompt: str = PROMPT_
                 config=GenerateContentConfig(
                     temperature=0.1,
                     max_output_tokens=1024,
+                    thinking_config=ThinkingConfig(thinking_budget=0),
                 ),
             )
         except Exception as e:
@@ -374,8 +377,12 @@ def _chamar_gemini(client: genai.Client, image_part: Part, prompt: str = PROMPT_
                 espera = 15 * (tentativa + 1)
                 logger.info("Rate limit, aguardando %ds (%d/%d)", espera, tentativa + 1, max_retries)
                 time.sleep(espera)
+            elif "503" in err or "UNAVAILABLE" in err:
+                espera = 30 * (tentativa + 1)
+                logger.info("Serviço indisponível (503), aguardando %ds (%d/%d)", espera, tentativa + 1, max_retries)
+                time.sleep(espera)
             elif "timed out" in err.lower() or "ReadTimeout" in type(e).__name__:
-                espera = 5 * (tentativa + 1)
+                espera = 10 * (tentativa + 1)
                 logger.info("Timeout, aguardando %ds (%d/%d)", espera, tentativa + 1, max_retries)
                 time.sleep(espera)
             else:

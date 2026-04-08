@@ -84,26 +84,67 @@ def montar_prompt_dados(calibracao: dict) -> str:
 def montar_prompt_gemini(calibracao: dict) -> str:
     """Monta o prompt do Gemini a partir da calibração.
 
-    The prompt has 3 parts:
-    1. General instructions (fixed)
-    2. Layout mapping (channel-specific from calibration)
-    3. JSON response format (fixed)
+    Seções do prompt (channel-specific):
+    1. layout — posição e formato de cada campo no overlay
+    2. ignorar — elementos visuais que NÃO são dados do lote
+    3. carimbo — indicador visual de venda (selo, martelo, overlay)
+    4. comportamento_preco — como o preço funciona neste canal
+    5. dinamica_leilao — como identificar arrematado/sem disputa/repescagem
+    6. transicoes — como é a troca entre lotes
     """
     layout = calibracao.get("layout", "")
     ignorar = calibracao.get("ignorar", "")
     carimbo = calibracao.get("carimbo", "")
+    comportamento_preco = calibracao.get("comportamento_preco", "")
+    dinamica_leilao = calibracao.get("dinamica_leilao", "")
+    transicoes = calibracao.get("transicoes", "")
 
+    # Carimbo
     carimbo_instrucao = ""
     if carimbo and carimbo != "sem_carimbo":
         carimbo_instrucao = f"""
-Se houver selo/carimbo de arrematação visível ({carimbo}), adicione ao JSON:
-"carimbo_vendido": true
+INDICADOR DE VENDA (CARIMBO):
+{carimbo}
+Se este indicador estiver visível, retorne "carimbo_vendido": true.
 """
+    else:
+        carimbo_instrucao = """
+Este canal NÃO usa carimbo/selo visual de venda. Retorne "carimbo_vendido": false sempre.
+"""
+
+    # Comportamento de preço
+    preco_instrucao = ""
+    if comportamento_preco:
+        preco_instrucao = f"""
+COMPORTAMENTO DE PREÇO NESTE CANAL:
+{comportamento_preco}
+"""
+
+    # Dinâmica do leilão
+    dinamica_instrucao = ""
+    if dinamica_leilao:
+        dinamica_instrucao = f"""
+DINÂMICA DO LEILÃO:
+{dinamica_leilao}
+"""
+
+    # Transições
+    transicoes_instrucao = ""
+    if transicoes:
+        transicoes_instrucao = f"""
+TRANSIÇÕES ENTRE LOTES:
+{transicoes}
+"""
+
+    # Detectar se fazenda não aparece neste canal
+    sem_fazenda = "não aparece" in layout.lower() and "fazenda" in layout.lower()
+    fazenda_regra = ""
+    if sem_fazenda:
+        fazenda_regra = "- fazenda_vendedor: este canal NÃO mostra fazenda no overlay. Retorne SEMPRE null. Nomes na linha de LANCES (ADILSON, INNGREDY, GLECIO, GEISLA, etc.) são LEILOEIROS, NÃO fazendas"
 
     prompt = f"""Analise este frame de um leilão de gado brasileiro transmitido ao vivo.
 
-A imagem mostra o topo e a base do vídeo concatenados (o meio com o gado foi removido).
-O overlay do leilão contém textos sobrepostos com dados do lote sendo leiloado.
+A imagem mostra o frame inteiro do vídeo. O overlay do leilão contém textos sobrepostos com dados do lote sendo leiloado.
 
 Se NÃO houver overlay de lote (pista vazia, intervalo, propaganda, telefones, tela de espera):
 {{"erro": "nao_e_leilao"}}
@@ -113,6 +154,9 @@ LAYOUT ESPECÍFICO DESTE CANAL:
 
 {f"IGNORE (NÃO são dados do lote): {ignorar}" if ignorar else ""}
 {carimbo_instrucao}
+{preco_instrucao}
+{dinamica_instrucao}
+{transicoes_instrucao}
 Se houver overlay com dados do lote, retorne APENAS este JSON sem markdown:
 {{
     "lote_numero": "12",
@@ -127,7 +171,8 @@ Se houver overlay com dados do lote, retorne APENAS este JSON sem markdown:
     "local_estado": "GO",
     "fazenda_vendedor": "SITIO BOA SORTE",
     "timestamp_video": null,
-    "confianca": 0.95
+    "confianca": 0.95,
+    "carimbo_vendido": false
 }}
 
 Regras:
@@ -141,8 +186,10 @@ Regras:
 - local_cidade: cidade do leilão (topo do frame, logos, banners)
 - local_estado: sigla UF (2 letras)
 - fazenda_vendedor: nome do vendedor/fazenda ("VENDEDOR:", "FAZ.", "FAZENDA")
+{fazenda_regra}
 - timestamp_video: hora do overlay (HH:MM:SS). null se não visível
 - confianca: 0.0 a 1.0
+- carimbo_vendido: true se houver indicador visual de venda. false se não houver
 - Campo não legível: null (não invente)
 """
     return prompt
