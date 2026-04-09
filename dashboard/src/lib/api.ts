@@ -101,6 +101,77 @@ export interface PontoTendencia {
   lotes: number;
 }
 
+// --- Ao Vivo ---
+
+export interface LoteAoVivo {
+  lote_numero: string;
+  quantidade: number;
+  raca: string | null;
+  sexo: string | null;
+  condicao: string | null;
+  idade_meses: number | null;
+  fazenda_vendedor: string | null;
+  preco_atual: number;
+  preco_inicial: number;
+  preco_maximo: number;
+  frames_analisados: number;
+  confianca_media: number;
+  carimbo_vendido: boolean;
+  status: string;
+  inicio: string;
+  fim: string | null;
+  precos_historico: number[];
+}
+
+export interface SessaoAoVivo {
+  ativo: boolean;
+  id?: string;
+  url?: string;
+  canal?: string;
+  titulo?: string;
+  status?: string;
+  lote_atual?: LoteAoVivo | null;
+  lotes_finalizados?: LoteAoVivo[];
+  total_lotes?: number;
+  criado_em?: string;
+  iniciado_em?: string;
+}
+
+export interface FaixaPreco {
+  min: number;
+  max: number;
+  total: number;
+  arrematados: number;
+  taxa: number;
+}
+
+export interface ComparacaoCamada {
+  label: string;
+  media: number;
+  minimo: number;
+  maximo: number;
+  lotes: number;
+  percentual: number;
+  tendencia: number | null;
+  taxa_faixas: FaixaPreco[];
+  faixa_atual: number | null;
+  n_leiloes_real: number;
+}
+
+export interface ComparacaoResponse {
+  perfil: { raca: string; sexo: string; idade_meses: number; preco_atual: number };
+  n_leiloes_solicitados: number;
+  comparacoes: ComparacaoCamada[];
+}
+
+export interface EventoAoVivo {
+  tipo: "lote_atualizado" | "lote_finalizado" | "novo_lote" | "frame_sem_dados" | "erro" | "heartbeat" | "sessao_encerrada" | "fim";
+  lote?: LoteAoVivo;
+  lote_numero?: string;
+  mensagem?: string;
+  frame?: number;
+}
+
 function buildParams(filtros: Filtros): URLSearchParams {
   const params = new URLSearchParams();
   if (filtros.raca) params.set("raca", filtros.raca);
@@ -352,4 +423,34 @@ export const api = {
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ coletados: number; persistidos: number; fontes: string[]; data: string }>;
   },
+
+  // Ao Vivo
+  aoVivoConectar: async (url: string) => {
+    const res = await fetch(`${API_URL}/api/ao-vivo/conectar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    return res.json();
+  },
+  aoVivoIniciar: async () => {
+    const res = await fetch(`${API_URL}/api/ao-vivo/iniciar`, { method: "POST" });
+    return res.json();
+  },
+  aoVivoPausar: async () => {
+    const res = await fetch(`${API_URL}/api/ao-vivo/pausar`, { method: "POST" });
+    return res.json();
+  },
+  aoVivoRetomar: async () => {
+    const res = await fetch(`${API_URL}/api/ao-vivo/retomar`, { method: "POST" });
+    return res.json();
+  },
+  aoVivoEncerrar: async () => {
+    const res = await fetch(`${API_URL}/api/ao-vivo/encerrar`, { method: "POST" });
+    return res.json();
+  },
+  aoVivoStatus: () => fetchJson<SessaoAoVivo>("/api/ao-vivo/status"),
+  aoVivoComparacao: (p: { n_leiloes?: number; casas?: string; cidades?: string; estados?: string }) =>
+    fetchJson<ComparacaoResponse>("/api/ao-vivo/comparacao", buildSimpleParams(p)),
+  aoVivoEventosUrl: () => `${API_URL}/api/ao-vivo/eventos`,
 };

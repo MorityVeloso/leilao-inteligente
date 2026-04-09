@@ -164,19 +164,48 @@ def normalizar_dados(dados: dict[str, object]) -> dict[str, object]:
     # Normalizar fazenda
     fazenda = resultado.get("fazenda_vendedor")
     if isinstance(fazenda, str):
-        fazenda = fazenda.strip()
-        if fazenda.upper().startswith("RECINTO "):
-            fazenda = fazenda[8:]
         fazenda = fazenda.strip().upper()
 
+        # Remover prefixo "RECINTO "
+        if fazenda.startswith("RECINTO "):
+            fazenda = fazenda[8:].strip()
+
+        # Remover indicador de sexo M/F solto no final (Gemini inclui por engano)
+        # Ex: "FAZENDA PAULA F" → "FAZENDA PAULA", "RANCHO AJ M" → "RANCHO AJ"
+        import re
+        fazenda = re.sub(r"\s+[MF]$", "", fazenda)
+
+        # Corrigir truncamentos de OCR
+        if fazenda.startswith("AZENDA "):
+            fazenda = "F" + fazenda  # "AZENDA X" → "FAZENDA X"
+        if fazenda.startswith("FAZEN "):
+            fazenda = "FAZENDA " + fazenda[6:].strip()  # "FAZEN JM" → "FAZENDA JM"
+
+        # Padronizar prefixos: "FAZ " → "FAZ.", "FAZENDA " → "FAZ."
+        for prefixo_longo, prefixo_curto in [
+            ("FAZENDA ", "FAZ. "),
+            ("FAZ ", "FAZ. "),
+            ("SITIO ", "SITIO "),
+            ("CHACARA ", "CHAC. "),
+            ("AGROPECUARIA ", "AGROP. "),
+            ("AGROP ", "AGROP. "),
+            ("ESTANCIA ", "EST. "),
+        ]:
+            if fazenda.startswith(prefixo_longo):
+                fazenda = prefixo_curto + fazenda[len(prefixo_longo):]
+                break
+
         # Correcoes de OCR conhecidas
-        correcoes_fazenda: dict[str, str] = {
+        correcoes_ocr: dict[str, str] = {
             "TUOLO": "TIJOLO",
             "TUÓLO": "TIJOLO",
             "TIJÓLO": "TIJOLO",
             "BAN": "BRN",
         }
-        resultado["fazenda_vendedor"] = correcoes_fazenda.get(fazenda, fazenda)
+        for errado, certo in correcoes_ocr.items():
+            fazenda = fazenda.replace(errado, certo)
+
+        resultado["fazenda_vendedor"] = fazenda.strip()
     elif fazenda is None:
         resultado["fazenda_vendedor"] = None
 

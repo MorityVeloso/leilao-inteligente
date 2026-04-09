@@ -2,13 +2,13 @@
 
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, case
 
@@ -1384,3 +1384,331 @@ def post_mercado_atualizar():
     except Exception as e:
         logger.exception("Erro atualizando mercado")
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================================
+# AO VIVO
+# ============================================================
+
+_sessao_ao_vivo: object = None  # SessaoAoVivo | None
+
+
+class ConectarAoVivoRequest(BaseModel):
+    url: str
+
+
+@app.post("/api/ao-vivo/conectar")
+def post_ao_vivo_conectar(req: ConectarAoVivoRequest):
+    """Valida URL e cria sessão ao vivo (estado CONECTADO)."""
+    global _sessao_ao_vivo
+    import uuid
+    from leilao_inteligente.pipeline.ao_vivo import SessaoAoVivo, validar_live
+    from leilao_inteligente.pipeline.calibration import obter_calibracao
+
+    info = validar_live(req.url)
+    if not info["is_live"]:
+        return JSONResponse({"erro": info["erro"]}, status_code=400)
+
+    canal = info["canal"]
+    _sessao_ao_vivo = SessaoAoVivo(
+        id=uuid.uuid4().hex[:12],
+        url=req.url,
+        canal=canal,
+        titulo=info["titulo"],
+    )
+
+    return {
+        "sessao_id": _sessao_ao_vivo.id,
+        "canal": canal,
+        "titulo": info["titulo"],
+        "video_id": info["video_id"],
+        "status": "conectado",
+        "tem_calibracao": obter_calibracao(canal) is not None,
+    }
+
+
+@app.post("/api/ao-vivo/iniciar")
+def post_ao_vivo_iniciar():
+    """Inicia captura ao vivo (botão 'Iniciar Análise')."""
+    global _sessao_ao_vivo
+    if not _sessao_ao_vivo:
+        return JSONResponse({"erro": "Nenhuma sessão conectada"}, status_code=400)
+
+    from leilao_inteligente.pipeline.calibration import obter_calibracao, montar_prompt_gemini
+    cal = obter_calibracao(_sessao_ao_vivo.canal)
+    prompt = montar_prompt_gemini(cal) if cal else None
+
+    _sessao_ao_vivo.iniciar(prompt_calibrado=prompt)
+    return {"status": "analisando"}
+
+
+@app.post("/api/ao-vivo/pausar")
+def post_ao_vivo_pausar():
+    """Pausa a captura (intervalo do leilão)."""
+    if not _sessao_ao_vivo:
+        return JSONResponse({"erro": "Nenhuma sessão"}, status_code=400)
+    _sessao_ao_vivo.pausar()
+    return {"status": "pausado"}
+
+
+@app.post("/api/ao-vivo/retomar")
+def post_ao_vivo_retomar():
+    """Retoma a captura após pausa."""
+    if not _sessao_ao_vivo:
+        return JSONResponse({"erro": "Nenhuma sessão"}, status_code=400)
+    _sessao_ao_vivo.retomar()
+    return {"status": "analisando"}
+
+
+@app.post("/api/ao-vivo/encerrar")
+def post_ao_vivo_encerrar():
+    """Encerra sessão e persiste como leilão no banco."""
+    global _sessao_ao_vivo
+    if not _sessao_ao_vivo:
+        return JSONResponse({"erro": "Nenhuma sessão"}, status_code=400)
+
+    _sessao_ao_vivo.encerrar()
+    if _sessao_ao_vivo._thread:
+        _sessao_ao_vivo._thread.join(timeout=10)
+
+    from leilao_inteligente.storage.repository import salvar_leilao
+    from leilao_inteligente.models.schemas import LeilaoInfo, LoteConsolidado
+
+    lotes_consolidados = []
+    for lote in _sessao_ao_vivo.lotes_finalizados:
+        lc = LoteConsolidado(
+            lote_numero=lote.lote_numero,
+            quantidade=lote.quantidade,
+            raca=lote.raca,
+            sexo=lote.sexo,
+            condicao=lote.condicao,
+            idade_meses=lote.idade_meses,
+            preco_inicial=lote.preco_inicial,
+            preco_final=lote.preco_atual,
+            preco_por_cabeca=lote.preco_atual / lote.quantidade if lote.quantidade else None,
+            fazenda_vendedor=lote.fazenda_vendedor,
+            local_cidade=None,
+            local_estado=None,
+            timestamp_inicio=lote.inicio,
+            timestamp_fim=lote.fim,
+            frames_analisados=lote.frames_analisados,
+            confianca_media=lote.confianca_media,
+            aparicoes=1,
+            status=lote.status,
+            frame_paths=[],
+            segundo_video=None,
+        )
+        lotes_consolidados.append(lc)
+
+    resultado = {"status": "encerrado", "leilao_id": None, "lotes": 0}
+    if lotes_consolidados:
+        leilao_info = LeilaoInfo(
+            canal_youtube=_sessao_ao_vivo.canal,
+            url_video=_sessao_ao_vivo.url,
+            titulo=_sessao_ao_vivo.titulo,
+            data_leilao=datetime.now(tz=timezone.utc),
+        )
+        leilao = salvar_leilao(leilao_info, lotes_consolidados)
+        resultado = {"status": "encerrado", "leilao_id": leilao.id, "lotes": len(lotes_consolidados)}
+
+    _sessao_ao_vivo = None
+    return resultado
+
+
+@app.get("/api/ao-vivo/status")
+def get_ao_vivo_status():
+    """Retorna estado atual da sessão ao vivo."""
+    if not _sessao_ao_vivo:
+        return {"ativo": False}
+    return {"ativo": True, **_sessao_ao_vivo.to_dict()}
+
+
+@app.get("/api/ao-vivo/eventos")
+def get_ao_vivo_eventos():
+    """Stream SSE de eventos ao vivo."""
+    if not _sessao_ao_vivo:
+        return JSONResponse({"erro": "Nenhuma sessão"}, status_code=400)
+
+    import json as _json
+
+    def event_stream():
+        while _sessao_ao_vivo and _sessao_ao_vivo.status not in ("encerrado", "erro"):
+            try:
+                evento = _sessao_ao_vivo.eventos.get(timeout=5)
+                yield f"data: {_json.dumps(evento, default=str)}\n\n"
+            except Exception:
+                yield f"data: {_json.dumps({'tipo': 'heartbeat'})}\n\n"
+        yield f"data: {_json.dumps({'tipo': 'fim'})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/ao-vivo/comparacao")
+def get_ao_vivo_comparacao(
+    n_leiloes: int = 5,
+    casas: str | None = None,
+    cidades: str | None = None,
+    estados: str | None = None,
+):
+    """Comparações históricas multicamada para o lote atual.
+
+    Filtro fixo: raça exata, sexo exato, idade ±1 mês, status arrematado.
+    Camadas configuráveis: mesma casa, casas específicas, cidades, estados, geral.
+    """
+    if not _sessao_ao_vivo or not _sessao_ao_vivo.lote_atual:
+        return {"comparacoes": []}
+
+    lote = _sessao_ao_vivo.lote_atual
+    session = get_session()
+
+    try:
+        raca = lote.raca
+        sexo = lote.sexo
+        idade = lote.idade_meses
+        preco_atual = float(lote.preco_atual)
+
+        if not all([raca, sexo, idade]):
+            return {"comparacoes": [], "motivo": "Dados insuficientes do lote atual"}
+
+        def _query_camada(filtros_extra=None, label=""):
+            """Monta comparação para uma camada geográfica."""
+            import numpy as np
+
+            # Lotes arrematados com mesmo perfil
+            q = session.query(Lote).join(Leilao, isouter=True).filter(
+                Lote.raca == raca,
+                Lote.sexo == sexo,
+                Lote.idade_meses.between(idade - 1, idade + 1),
+                Lote.status == "arrematado",
+                Lote.preco_final > 0,
+            )
+            if filtros_extra:
+                for f in filtros_extra:
+                    q = q.filter(f)
+
+            # Limitar por N últimos leilões
+            leilao_ids = [r[0] for r in session.query(Leilao.id).order_by(
+                func.coalesce(Leilao.data_leilao, Leilao.processado_em).desc()
+            ).limit(n_leiloes).all()]
+            if leilao_ids:
+                q = q.filter(Lote.leilao_id.in_(leilao_ids))
+
+            lotes_hist = q.all()
+            if not lotes_hist:
+                return None
+
+            precos = [float(l.preco_final) for l in lotes_hist]
+            n = len(precos)
+            media = sum(precos) / n
+
+            # Posição percentual
+            abaixo = sum(1 for p in precos if p < preco_atual)
+            percentual = round(abaixo / n * 100)
+
+            # Taxa de arrematação por faixa (quartis dinâmicos)
+            quartis = np.percentile(precos, [25, 50, 75]).tolist()
+            faixas = [
+                (min(precos), quartis[0]),
+                (quartis[0], quartis[1]),
+                (quartis[1], quartis[2]),
+                (quartis[2], max(precos)),
+            ]
+
+            # Todos os lotes (incluindo não arrematados) para taxa
+            q_todos = session.query(Lote).join(Leilao, isouter=True).filter(
+                Lote.raca == raca,
+                Lote.sexo == sexo,
+                Lote.idade_meses.between(idade - 1, idade + 1),
+                Lote.preco_final > 0,
+            )
+            if filtros_extra:
+                for f in filtros_extra:
+                    q_todos = q_todos.filter(f)
+            if leilao_ids:
+                q_todos = q_todos.filter(Lote.leilao_id.in_(leilao_ids))
+            todos = q_todos.all()
+
+            taxa_faixas = []
+            faixa_atual_idx = None
+            for i, (fmin, fmax) in enumerate(faixas):
+                na_faixa = [l for l in todos if fmin <= float(l.preco_final) <= fmax]
+                arrematados = sum(1 for l in na_faixa if l.status == "arrematado")
+                total_faixa = len(na_faixa)
+                taxa = round(arrematados / total_faixa * 100) if total_faixa > 0 else 0
+                taxa_faixas.append({
+                    "min": round(fmin),
+                    "max": round(fmax),
+                    "total": total_faixa,
+                    "arrematados": arrematados,
+                    "taxa": taxa,
+                })
+                if fmin <= preco_atual <= fmax:
+                    faixa_atual_idx = i
+
+            # Tendência
+            tendencia = None
+            if n >= 4:
+                precos_sorted = sorted(precos)
+                meio = n // 2
+                media_recente = sum(precos_sorted[meio:]) / len(precos_sorted[meio:])
+                media_antiga = sum(precos_sorted[:meio]) / len(precos_sorted[:meio])
+                if media_antiga > 0:
+                    tendencia = round((media_recente - media_antiga) / media_antiga * 100, 1)
+
+            return {
+                "label": label,
+                "media": round(media),
+                "minimo": round(min(precos)),
+                "maximo": round(max(precos)),
+                "lotes": n,
+                "percentual": percentual,
+                "tendencia": tendencia,
+                "taxa_faixas": taxa_faixas,
+                "faixa_atual": faixa_atual_idx,
+                "n_leiloes_real": len(set(l.leilao_id for l in lotes_hist)),
+            }
+
+        comparacoes = []
+
+        # Camada 1: Mesma casa
+        c = _query_camada([Leilao.titulo == _sessao_ao_vivo.titulo], f"Esta casa")
+        if c:
+            comparacoes.append(c)
+
+        # Camada 2: Casas específicas
+        if casas:
+            for casa in casas.split(","):
+                c = _query_camada([Leilao.titulo == casa.strip()], casa.strip()[:30])
+                if c:
+                    comparacoes.append(c)
+
+        # Camada 3: Cidades
+        if cidades:
+            for cidade in cidades.split(","):
+                c = _query_camada([Leilao.local_cidade == cidade.strip()], f"Cidade: {cidade.strip()}")
+                if c:
+                    comparacoes.append(c)
+
+        # Camada 4: Estados
+        if estados:
+            for estado in estados.split(","):
+                c = _query_camada([Leilao.local_estado == estado.strip().upper()], f"Estado: {estado.strip().upper()}")
+                if c:
+                    comparacoes.append(c)
+
+        # Camada 5: Geral
+        c = _query_camada(label="Todos os leilões")
+        if c:
+            comparacoes.append(c)
+
+        return {
+            "perfil": {"raca": raca, "sexo": sexo, "idade_meses": idade, "preco_atual": preco_atual},
+            "n_leiloes_solicitados": n_leiloes,
+            "comparacoes": comparacoes,
+        }
+    finally:
+        session.close()

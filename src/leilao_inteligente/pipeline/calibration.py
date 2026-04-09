@@ -136,11 +136,15 @@ TRANSIÇÕES ENTRE LOTES:
 {transicoes}
 """
 
-    # Detectar se fazenda não aparece neste canal
-    sem_fazenda = "não aparece" in layout.lower() and "fazenda" in layout.lower()
+    # Detectar se fazenda não aparece neste canal (busca na linha específica de fazenda)
+    sem_fazenda = False
+    for line in layout.split("\n"):
+        if "fazenda" in line.lower() and "não aparece" in line.lower():
+            sem_fazenda = True
+            break
     fazenda_regra = ""
     if sem_fazenda:
-        fazenda_regra = "- fazenda_vendedor: este canal NÃO mostra fazenda no overlay. Retorne SEMPRE null. Nomes na linha de LANCES (ADILSON, INNGREDY, GLECIO, GEISLA, etc.) são LEILOEIROS, NÃO fazendas"
+        fazenda_regra = "- fazenda_vendedor: este canal NÃO mostra fazenda no overlay. Retorne SEMPRE null. Nomes na linha de LANCES são LEILOEIROS, NÃO fazendas"
 
     prompt = f"""Analise este frame de um leilão de gado brasileiro transmitido ao vivo.
 

@@ -1,6 +1,7 @@
 """CRUD operations para leiloes e lotes."""
 
 import logging
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -11,6 +12,28 @@ from leilao_inteligente.storage.db import get_session, init_db
 
 
 logger = logging.getLogger(__name__)
+
+
+def _normalizar_titulo(titulo: str) -> str:
+    """Normaliza título do leilão removendo sufixos do YouTube e limpando formatação."""
+    t = titulo.strip()
+
+    # Remover sufixo genérico do YouTube: "| Leilão ao Vivo - Leilão de Gado"
+    t = re.sub(r"\s*\|.*$", "", t)
+
+    # Remover " - Leilão de Gado" se sobrou
+    t = re.sub(r"\s*-\s*Leil[ãa]o\s+de\s+Gado\s*$", "", t, flags=re.IGNORECASE)
+
+    # Remover data no final (DD/MM/YYYY ou -DD/MM/YYYY)
+    t = re.sub(r"\s*-?\s*\d{2}/\d{2}/\d{4}\s*$", "", t)
+
+    # Limpar espaços duplos
+    t = re.sub(r"\s{2,}", " ", t).strip()
+
+    # Uppercase consistente
+    t = t.upper()
+
+    return t
 
 
 def _precisa_revisar(lote: LoteConsolidado) -> bool:
@@ -65,7 +88,7 @@ def salvar_leilao(
         leilao = Leilao(
             canal_youtube=info.canal_youtube,
             url_video=info.url_video,
-            titulo=info.titulo,
+            titulo=_normalizar_titulo(info.titulo),
             data_leilao=info.data_leilao,
             local_cidade=info.local_cidade or (lotes[0].local_cidade if lotes else None),
             local_estado=info.local_estado or (lotes[0].local_estado if lotes else None),
