@@ -124,6 +124,8 @@ class SessaoAoVivo:
 
     def iniciar(self, prompt_calibrado: str | None = None) -> None:
         """Inicia a captura ao vivo em thread separada."""
+        if self.status == "analisando":
+            return  # Já está rodando
         self.status = "analisando"
         self.iniciado_em = datetime.now(tz=timezone.utc)
         self._thread = threading.Thread(
@@ -161,8 +163,13 @@ class SessaoAoVivo:
 # --- Validação e captura ---
 
 
-def validar_live(url: str) -> dict:
-    """Valida se a URL é um stream ao vivo do YouTube."""
+def validar_live(url: str, permitir_gravado: bool = True) -> dict:
+    """Valida URL de vídeo do YouTube.
+
+    Args:
+        url: URL do YouTube.
+        permitir_gravado: Se True, aceita vídeos gravados (para testes).
+    """
     import yt_dlp
     from leilao_inteligente.config import get_settings
 
@@ -175,15 +182,18 @@ def validar_live(url: str) -> dict:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             is_live = info.get("is_live", False)
+            aceitar = is_live or permitir_gravado
             return {
                 "is_live": is_live,
+                "gravado": not is_live,
+                "duracao": info.get("duration"),
                 "canal": info.get("channel", ""),
                 "titulo": info.get("title", ""),
                 "video_id": info.get("id", ""),
-                "erro": None if is_live else "Vídeo não é uma transmissão ao vivo",
+                "erro": None if aceitar else "Vídeo não é uma transmissão ao vivo",
             }
     except Exception as e:
-        return {"is_live": False, "canal": "", "titulo": "", "video_id": "", "erro": str(e)}
+        return {"is_live": False, "gravado": False, "duracao": None, "canal": "", "titulo": "", "video_id": "", "erro": str(e)}
 
 
 def _obter_stream_url(url: str) -> str | None:
@@ -227,34 +237,78 @@ def _capturar_frame_stream(stream_url: str, output_path: Path) -> bool:
         return False
 
 
+def _capturar_frame_gravado(video_path: Path, timestamp: int, output_path: Path) -> bool:
+    """Captura 1 frame de vídeo gravado num timestamp específico."""
+    import subprocess
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(timestamp),
+        "-i", str(video_path),
+        "-frames:v", "1",
+        "-q:v", "2",
+        str(output_path),
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        return result.returncode == 0 and output_path.exists()
+    except Exception:
+        return False
+
+
+def _resolver_video_local(url: str) -> Path | None:
+    """Verifica se o vídeo já está baixado localmente."""
+    from leilao_inteligente.pipeline.downloader import extrair_video_id
+    from leilao_inteligente.config import VIDEOS_DIR
+
+    video_id = extrair_video_id(url)
+    if not video_id:
+        return None
+    video_path = VIDEOS_DIR / f"{video_id}.mp4"
+    return video_path if video_path.exists() else None
+
+
 def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> None:
     """Loop principal: captura frame → Gemini → atualiza lote → emite evento.
 
     Roda em thread separada. Para quando sessao._parar é setado.
+    Suporta tanto stream ao vivo quanto vídeo gravado (para testes).
     """
-    import json
     import tempfile
     import numpy as np
     import cv2
     from google.genai.types import Part
     from leilao_inteligente.pipeline.vision import (
         _preparar_frame, _chamar_gemini, _parse_response, _get_client, PROMPT_EXTRACAO,
+        criar_cache_prompt, deletar_cache_prompt,
     )
     from leilao_inteligente.pipeline.validator import normalizar_dados
 
     intervalo = 5
-    stream_url = _obter_stream_url(sessao.url)
-    if not stream_url:
-        sessao.status = "erro"
-        sessao.eventos.put({"tipo": "erro", "mensagem": "Não foi possível obter stream URL"})
-        return
-
     client = _get_client()
     prompt = prompt_calibrado or PROMPT_EXTRACAO
+
+    # Criar cache do prompt (90% economia no input)
+    criar_cache_prompt(prompt)
     frame_anterior_bytes: bytes | None = None
     frame_num = 0
 
-    logger.info("Iniciando captura ao vivo: %s", sessao.titulo)
+    # Detectar modo: gravado (vídeo local) ou live (stream)
+    video_local = _resolver_video_local(sessao.url)
+    gravado = video_local is not None
+    stream_url: str | None = None
+    timestamp_gravado = 600  # Começar em 10min (pular abertura) para gravados
+
+    if gravado:
+        logger.info("Modo GRAVADO (simulação): %s", video_local)
+        sessao.eventos.put({"tipo": "info", "mensagem": f"Modo simulação — vídeo gravado, iniciando em {timestamp_gravado}s"})
+    else:
+        stream_url = _obter_stream_url(sessao.url)
+        if not stream_url:
+            sessao.status = "erro"
+            sessao.eventos.put({"tipo": "erro", "mensagem": "Não foi possível obter stream URL"})
+            return
+        logger.info("Modo AO VIVO: %s", sessao.titulo)
 
     while not sessao._parar.is_set():
         if sessao.status == "pausado":
@@ -266,13 +320,22 @@ def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> 
 
         try:
             # 1. Capturar frame
-            if not _capturar_frame_stream(stream_url, frame_path):
-                logger.info("Frame falhou, renovando stream URL...")
-                stream_url = _obter_stream_url(sessao.url)
-                if not stream_url:
-                    sessao.eventos.put({"tipo": "erro", "mensagem": "Stream perdido"})
+            if gravado:
+                ok = _capturar_frame_gravado(video_local, timestamp_gravado, frame_path)
+                timestamp_gravado += intervalo
+                if not ok:
+                    # Chegou ao fim do vídeo
+                    sessao.eventos.put({"tipo": "info", "mensagem": "Fim do vídeo gravado"})
                     break
-                continue
+            else:
+                ok = _capturar_frame_stream(stream_url, frame_path)
+                if not ok:
+                    logger.info("Frame falhou, renovando stream URL...")
+                    stream_url = _obter_stream_url(sessao.url)
+                    if not stream_url:
+                        sessao.eventos.put({"tipo": "erro", "mensagem": "Stream perdido"})
+                        break
+                    continue
 
             # 2. Preparar e detectar mudança
             overlay_bytes = _preparar_frame(frame_path)
@@ -280,11 +343,13 @@ def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> 
             if frame_anterior_bytes is not None:
                 img_atual = cv2.imdecode(np.frombuffer(overlay_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
                 img_anterior = cv2.imdecode(np.frombuffer(frame_anterior_bytes, np.uint8), cv2.IMREAD_GRAYSCALE)
-                if img_atual.shape == img_anterior.shape:
+                if img_atual is not None and img_anterior is not None and img_atual.shape == img_anterior.shape:
                     diff = np.mean(np.abs(img_atual.astype(float) - img_anterior.astype(float)))
                     if diff < 3.0:
                         frame_anterior_bytes = overlay_bytes
-                        time.sleep(intervalo)
+                        # Em gravado, não esperar (avançar rápido). Em live, esperar intervalo
+                        if not gravado:
+                            time.sleep(intervalo)
                         continue
 
             frame_anterior_bytes = overlay_bytes
@@ -294,13 +359,15 @@ def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> 
             response = _chamar_gemini(client, image_part, prompt=prompt)
 
             if not response.text:
-                time.sleep(intervalo)
+                if not gravado:
+                    time.sleep(intervalo)
                 continue
 
             dados = _parse_response(response.text)
             if not dados:
                 sessao.eventos.put({"tipo": "frame_sem_dados", "frame": frame_num})
-                time.sleep(intervalo)
+                if not gravado:
+                    time.sleep(intervalo)
                 continue
 
             # 4. Normalizar
@@ -308,7 +375,8 @@ def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> 
             lote_numero = str(dados.get("lote_numero", ""))
 
             if not lote_numero or lote_numero == "0":
-                time.sleep(intervalo)
+                if not gravado:
+                    time.sleep(intervalo)
                 continue
 
             # 5. Detectar troca de lote
@@ -343,13 +411,18 @@ def _loop_captura(sessao: SessaoAoVivo, prompt_calibrado: str | None = None) -> 
             if frame_path.exists():
                 frame_path.unlink()
 
-        time.sleep(intervalo)
+        # Em live, esperar intervalo. Em gravado, processar rápido (sem espera)
+        if not gravado:
+            time.sleep(intervalo)
 
     # Finalizar último lote
     if sessao.lote_atual:
         sessao.lote_atual.finalizar()
         sessao.lotes_finalizados.append(sessao.lote_atual)
         sessao.lote_atual = None
+
+    # Limpar cache do prompt
+    deletar_cache_prompt()
 
     sessao.encerrado_em = datetime.now(tz=timezone.utc)
     sessao.status = "encerrado"

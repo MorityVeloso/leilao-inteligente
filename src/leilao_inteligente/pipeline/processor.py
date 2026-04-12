@@ -15,7 +15,7 @@ from leilao_inteligente.pipeline.change_detector import filtrar_frames_relevante
 from leilao_inteligente.pipeline.downloader import baixar_video, extrair_video_id
 from leilao_inteligente.pipeline.frame_extractor import extrair_frames, extrair_frames_janela, frame_timestamp
 from leilao_inteligente.pipeline.validator import validar_lote
-from leilao_inteligente.pipeline.vision import extrair_dados_lote, extrair_dados_lote_batch
+from leilao_inteligente.pipeline.vision import extrair_dados_lote, extrair_dados_lote_batch, PROMPT_EXTRACAO
 
 
 logger = logging.getLogger(__name__)
@@ -653,6 +653,11 @@ def processar_video(
         logger.info("Modo BATCH ativado (50%% desconto, processamento assincrono)")
     video_id = extrair_video_id(url)
 
+    # Criar cache do prompt no Gemini (90% economia no input)
+    from leilao_inteligente.pipeline.vision import criar_cache_prompt, deletar_cache_prompt
+    prompt_para_cache = prompt_calibrado or PROMPT_EXTRACAO
+    cache_name = criar_cache_prompt(prompt_para_cache) if not batch else None
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -770,6 +775,10 @@ def processar_video(
 
     # Passada 4 removida — carimbo agora é detectado na calibração por Claude
     # O prompt calibrado instrui o Gemini a retornar "carimbo_vendido: true" quando aplicável
+
+    # Limpar cache do prompt
+    if cache_name:
+        deletar_cache_prompt()
 
     return consolidados
 

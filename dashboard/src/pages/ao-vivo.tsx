@@ -45,6 +45,7 @@ export function AoVivoPage() {
   const [loteAtual, setLoteAtual] = useState<LoteAoVivo | null>(null);
   const [lotesFinalizados, setLotesFinalizados] = useState<LoteAoVivo[]>([]);
   const [comparacao, setComparacao] = useState<ComparacaoResponse | null>(null);
+  const [framesSemDados, setFramesSemDados] = useState(0);
   const [nLeiloes, setNLeiloes] = useState(5);
   const [frameCount, setFrameCount] = useState(0);
 
@@ -80,7 +81,8 @@ export function AoVivoPage() {
           break;
 
         case "novo_lote":
-          setComparacao(null); // Limpar comparação do lote anterior
+          setComparacao(null);
+          setFramesSemDados(0);
           break;
 
         case "lote_finalizado":
@@ -91,6 +93,7 @@ export function AoVivoPage() {
 
         case "frame_sem_dados":
           if (evt.frame) setFrameCount(evt.frame);
+          setFramesSemDados((prev) => prev + 1);
           break;
 
         case "erro":
@@ -351,8 +354,13 @@ export function AoVivoPage() {
                 {loteAtual ? (
                   <LoteAoVivoPanel lote={loteAtual} />
                 ) : (
-                  <div className="text-sm text-muted-foreground text-center py-8">
-                    Aguardando primeiro lote...
+                  <div className="text-sm text-muted-foreground text-center py-8 space-y-2">
+                    <p>Aguardando primeiro lote...</p>
+                    {framesSemDados > 0 && (
+                      <p className="text-xs">
+                        {framesSemDados} frame{framesSemDados > 1 ? "s" : ""} sem overlay (intervalo/propaganda)
+                      </p>
+                    )}
                   </div>
                 )}
               </CardContent>

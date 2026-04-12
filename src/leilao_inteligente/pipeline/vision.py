@@ -86,6 +86,7 @@ Regras:
 MODEL_NAME = "gemini-2.5-flash"
 
 _client: genai.Client | None = None
+_prompt_cache_name: str | None = None  # Nome do cache ativo no Gemini
 
 
 def _get_client() -> genai.Client:
@@ -111,7 +112,60 @@ def _get_client() -> genai.Client:
     return _client
 
 
-# --- Cache ---
+def criar_cache_prompt(prompt: str, ttl_segundos: int = 14400) -> str | None:
+    """Cria cache do prompt no Gemini para economizar 90% no input.
+
+    O prompt é armazenado no servidor do Google. Chamadas subsequentes
+    referenciam o cache e pagam $0.015/1M tokens em vez de $0.15/1M.
+
+    Args:
+        prompt: Texto do prompt (system instruction).
+        ttl_segundos: Tempo de vida do cache (default 4h).
+
+    Returns:
+        Nome do cache criado, ou None se falhar.
+    """
+    global _prompt_cache_name
+    from google.genai.types import CreateCachedContentConfig
+
+    # Deletar cache anterior se existir
+    if _prompt_cache_name:
+        deletar_cache_prompt()
+
+    client = _get_client()
+    try:
+        cache = client.caches.create(
+            model=MODEL_NAME,
+            config=CreateCachedContentConfig(
+                system_instruction=prompt,
+                display_name="leilao-prompt-cache",
+                ttl=f"{ttl_segundos}s",
+            ),
+        )
+        _prompt_cache_name = cache.name
+        tokens = cache.usage_metadata.total_token_count
+        logger.info("Cache criado: %s (%d tokens, TTL %ds)", cache.name, tokens, ttl_segundos)
+        return cache.name
+    except Exception as e:
+        logger.warning("Falha ao criar cache: %s", e)
+        return None
+
+
+def deletar_cache_prompt() -> None:
+    """Deleta o cache ativo do prompt."""
+    global _prompt_cache_name
+    if not _prompt_cache_name:
+        return
+    client = _get_client()
+    try:
+        client.caches.delete(name=_prompt_cache_name)
+        logger.info("Cache deletado: %s", _prompt_cache_name)
+    except Exception as e:
+        logger.warning("Falha ao deletar cache: %s", e)
+    _prompt_cache_name = None
+
+
+# --- Cache local (disco) ---
 
 
 def _cache_key(overlay_bytes: bytes, prompt_hash: str = "") -> str:
@@ -356,20 +410,33 @@ def detectar_carimbo_lote(frame_paths: list[Path]) -> bool:
 
 
 def _chamar_gemini(client: genai.Client, image_part: Part, prompt: str = PROMPT_EXTRACAO) -> object:
-    """Chama Gemini com retry em rate limit, timeout e indisponibilidade."""
+    """Chama Gemini com retry em rate limit, timeout e indisponibilidade.
+
+    Se houver cache ativo (_prompt_cache_name), envia só a imagem e
+    referencia o cache (90% economia no prompt). Senão, envia prompt+imagem.
+    """
     from google.genai.types import ThinkingConfig
+
+    config_kwargs: dict = {
+        "temperature": 0.1,
+        "max_output_tokens": 1024,
+        "thinking_config": ThinkingConfig(thinking_budget=0),
+    }
+
+    # Se tem cache ativo, usar. Senão, enviar prompt inline.
+    if _prompt_cache_name:
+        contents = [image_part]
+        config_kwargs["cached_content"] = _prompt_cache_name
+    else:
+        contents = [prompt, image_part]
 
     max_retries = 5
     for tentativa in range(max_retries):
         try:
             return client.models.generate_content(
                 model=MODEL_NAME,
-                contents=[prompt, image_part],
-                config=GenerateContentConfig(
-                    temperature=0.1,
-                    max_output_tokens=1024,
-                    thinking_config=ThinkingConfig(thinking_budget=0),
-                ),
+                contents=contents,
+                config=GenerateContentConfig(**config_kwargs),
             )
         except Exception as e:
             err = str(e)

@@ -1406,7 +1406,7 @@ def post_ao_vivo_conectar(req: ConectarAoVivoRequest):
     from leilao_inteligente.pipeline.calibration import obter_calibracao
 
     info = validar_live(req.url)
-    if not info["is_live"]:
+    if info["erro"]:
         return JSONResponse({"erro": info["erro"]}, status_code=400)
 
     canal = info["canal"]
@@ -1433,6 +1433,8 @@ def post_ao_vivo_iniciar():
     global _sessao_ao_vivo
     if not _sessao_ao_vivo:
         return JSONResponse({"erro": "Nenhuma sessão conectada"}, status_code=400)
+    if _sessao_ao_vivo.status == "analisando":
+        return {"status": "analisando", "aviso": "Já está analisando"}
 
     from leilao_inteligente.pipeline.calibration import obter_calibracao, montar_prompt_gemini
     cal = obter_calibracao(_sessao_ao_vivo.canal)
