@@ -677,13 +677,24 @@ def processar_video(
         frames = extrair_frames(video_path, intervalo_segundos=settings.frame_interval_seconds)
         progress.update(task, completed=True, description=f"Extraidos {len(frames)} frames")
 
-        # 3. Filtrar frames relevantes
+        # 3. Filtrar frames relevantes (usar parâmetros da calibração se existirem)
         _notify("detectando_mudancas")
         task = progress.add_task("Detectando mudancas...", total=None)
+
+        change_top = settings.overlay_region_top_percent
+        change_threshold = settings.change_threshold
+        if canal_youtube:
+            from leilao_inteligente.pipeline.calibration import obter_captura
+            captura = obter_captura(canal_youtube)
+            if captura:
+                change_top = captura.get("overlay_top_percent", change_top)
+                change_threshold = captura.get("threshold", change_threshold)
+                logger.info("Captura calibrada: top=%d%%, threshold=%.4f", change_top, change_threshold)
+
         frames_relevantes = filtrar_frames_relevantes(
             frames,
-            top_percent=settings.overlay_region_top_percent,
-            threshold=settings.change_threshold,
+            top_percent=change_top,
+            threshold=change_threshold,
         )
         progress.update(
             task, completed=True,

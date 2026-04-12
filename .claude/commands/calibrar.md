@@ -167,7 +167,29 @@ Como é a troca de lotes:
 - [ ] O overlay do próximo lote aparece antes ou depois do preço zerar?
 - [ ] Há **numeração sequencial** previsível (lote 1, 2, 3...) ou pode pular?
 
-### ETAPA 5 — SALVAR CALIBRAÇÃO
+### ETAPA 5 — AUTO-CALIBRAR CAPTURA
+
+Rodar a auto-calibração para descobrir threshold e região do overlay ideais para este canal:
+
+```python
+from leilao_inteligente.pipeline.calibration import calibrar_captura
+from pathlib import Path
+
+# Usar os frames coletados na etapa 3
+frames_dir = Path(f"data/frames/{video_id}_calib_frames")
+frames = sorted(frames_dir.glob("calib_*.jpg"))
+captura = calibrar_captura(frames)
+print(captura)
+```
+
+Verificar os resultados:
+- `threshold`: deve ser baixo o suficiente pra capturar mudanças de preço, alto o suficiente pra ignorar ruído
+- `overlay_top_percent`: região onde fica a barra de dados (85 = bottom 15%, 62 = bottom 38%)
+- `taxa_passagem`: ideal entre 20-50%. Se <15% = muito restritivo, se >80% = muito permissivo
+
+Se os valores parecerem errados (ex: threshold muito alto, região errada), ajustar manualmente.
+
+### ETAPA 6 — SALVAR CALIBRAÇÃO
 
 ```python
 from leilao_inteligente.pipeline.calibration import salvar_calibracao
@@ -192,14 +214,16 @@ salvar_calibracao(canal, {
     "transicoes": """
     [como é a troca entre lotes, intervalos, numeração]
     """,
+    "captura": captura,  # da etapa 5
 })
 ```
 
-### ETAPA 6 — VALIDAÇÃO
+### ETAPA 7 — VALIDAÇÃO
 
 Antes de salvar, verificar:
 
-- [ ] Cada uma das 6 seções está preenchida (NENHUMA vazia)
+- [ ] Cada uma das 6 seções textuais está preenchida (NENHUMA vazia)
+- [ ] `captura` presente com threshold, overlay_top_percent e taxa_passagem entre 20-50%
 - [ ] O `layout` diferencia claramente lote_numero vs quantidade
 - [ ] O `carimbo` é específico o suficiente (posição + tipo + aparição) ou explicitamente "sem_carimbo"
 - [ ] O `comportamento_preco` diz se é R$/cabeça ou R$/@

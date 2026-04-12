@@ -53,6 +53,129 @@ def salvar_calibracao(canal: str, calibracao: dict) -> None:
         session.close()
 
 
+def calibrar_captura(frames: list) -> dict:
+    """Auto-calibra parâmetros de captura analisando frames amostrais.
+
+    Analisa pares de frames consecutivos para determinar:
+    - threshold ideal de change detection
+    - região do overlay (onde fica a barra de dados)
+    - sensibilidade de pixel
+
+    Args:
+        frames: Lista de paths de frames (mínimo 10, idealmente 30+).
+
+    Returns:
+        dict com: threshold, overlay_top_percent, pixel_diff, stats
+    """
+    import cv2
+    import numpy as np
+
+    if len(frames) < 5:
+        return {"threshold": 0.01, "overlay_top_percent": 62, "pixel_diff": 30}
+
+    # Calcular change scores para cada região vertical
+    # Testar: bottom 15%, 20%, 25%, 30%, 38%, 50%
+    regioes = [85, 80, 75, 70, 62, 50]  # overlay_top_percent
+    scores_por_regiao: dict[int, list[float]] = {r: [] for r in regioes}
+
+    frames_paths = [str(f) for f in frames]
+    prev_img = cv2.imread(frames_paths[0])
+
+    for fp in frames_paths[1:]:
+        img = cv2.imread(fp)
+        if img is None or prev_img is None:
+            prev_img = img
+            continue
+        if img.shape != prev_img.shape:
+            prev_img = img
+            continue
+
+        h = img.shape[0]
+        for regiao in regioes:
+            top = int(h * regiao / 100)
+            roi_prev = cv2.cvtColor(prev_img[top:, :], cv2.COLOR_BGR2GRAY)
+            roi_curr = cv2.cvtColor(img[top:, :], cv2.COLOR_BGR2GRAY)
+            diff = np.abs(roi_curr.astype(float) - roi_prev.astype(float))
+            pct = float(np.sum(diff > 30) / diff.size)
+            scores_por_regiao[regiao].append(pct)
+
+        prev_img = img
+
+    # Encontrar a melhor região: aquela onde os scores têm maior VARIÂNCIA
+    # (= onde a diferença entre "lote mudou" e "mesmo lote" é mais clara)
+    melhor_regiao = 62
+    melhor_separacao = 0.0
+
+    for regiao, scores in scores_por_regiao.items():
+        if not scores:
+            continue
+        arr = np.array(scores)
+        # Separação = diferença entre percentil 90 e mediana
+        # Quanto maior, mais fácil distinguir "mudou" de "não mudou"
+        p90 = float(np.percentile(arr, 90))
+        mediana = float(np.median(arr))
+        separacao = p90 - mediana
+
+        if separacao > melhor_separacao:
+            melhor_separacao = separacao
+            melhor_regiao = regiao
+
+    # Calcular threshold ideal para a melhor região
+    scores = np.array(scores_por_regiao[melhor_regiao])
+    mediana = float(np.median(scores))
+    p75 = float(np.percentile(scores, 75))
+    p90 = float(np.percentile(scores, 90))
+
+    # Threshold = entre mediana e p75 (captura mudanças significativas, ignora ruído)
+    # Mas não menor que 0.001 (0.1%)
+    threshold = max(0.001, (mediana + p75) / 2)
+
+    # Verificar quantos frames passariam com esse threshold
+    passam = int(np.sum(scores > threshold))
+    taxa = passam / len(scores) * 100
+
+    # Se menos de 15% passa, threshold muito alto — baixar
+    if taxa < 15:
+        threshold = max(0.001, mediana * 1.5)
+        passam = int(np.sum(scores > threshold))
+        taxa = passam / len(scores) * 100
+
+    # Se mais de 80% passa, threshold muito baixo — subir
+    if taxa > 80:
+        threshold = p75
+        passam = int(np.sum(scores > threshold))
+        taxa = passam / len(scores) * 100
+
+    resultado = {
+        "threshold": round(threshold, 4),
+        "overlay_top_percent": melhor_regiao,
+        "pixel_diff": 30,
+        "stats": {
+            "frames_analisados": len(scores),
+            "mediana_score": round(mediana, 4),
+            "p75_score": round(p75, 4),
+            "p90_score": round(p90, 4),
+            "taxa_passagem": round(taxa, 1),
+            "melhor_separacao": round(melhor_separacao, 4),
+        },
+    }
+
+    logger.info(
+        "Auto-calibração captura: região=%d%%, threshold=%.4f, taxa=%.1f%% (%d/%d frames)",
+        melhor_regiao, threshold, taxa, passam, len(scores),
+    )
+
+    return resultado
+
+
+def obter_captura(canal: str) -> dict | None:
+    """Retorna parâmetros de captura da calibração do canal."""
+    cal = obter_calibracao(canal)
+    if cal:
+        return cal.get("captura")
+    return None
+
+
 def obter_recortes(canal: str) -> dict | None:
     """Retorna coordenadas de recorte da calibração do canal."""
     cal = obter_calibracao(canal)
