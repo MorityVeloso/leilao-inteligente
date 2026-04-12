@@ -15,6 +15,7 @@ def detectar_mudanca(
     frame_atual: np.ndarray,
     top_percent: int = 70,
     threshold: float = 0.15,
+    pixel_diff: int = 30,
 ) -> bool:
     """Detecta se houve mudanca significativa na regiao do overlay.
 
@@ -26,6 +27,8 @@ def detectar_mudanca(
         frame_atual: Frame atual (BGR).
         top_percent: Porcentagem do topo a ignorar (70 = analisa os 30% inferiores).
         threshold: Limiar de mudanca (0.15 = 15% dos pixels mudaram).
+        pixel_diff: Minimo de mudanca por pixel pra contar como "mudou" (default 30).
+                    Overlays translucidos precisam de valor menor (10-15).
 
     Returns:
         True se houve mudanca significativa no overlay.
@@ -40,7 +43,7 @@ def detectar_mudanca(
     gray_atual = cv2.cvtColor(roi_atual, cv2.COLOR_BGR2GRAY)
 
     diff = cv2.absdiff(gray_anterior, gray_atual)
-    pixels_mudaram = float(np.mean(diff > 30))
+    pixels_mudaram = float(np.mean(diff > pixel_diff))
 
     return pixels_mudaram > threshold
 
@@ -49,6 +52,7 @@ def filtrar_frames_relevantes(
     frames: list[Path],
     top_percent: int = 70,
     threshold: float = 0.15,
+    pixel_diff: int = 30,
 ) -> list[Path]:
     """Filtra frames mantendo apenas os que possuem mudanca no overlay.
 
@@ -59,6 +63,7 @@ def filtrar_frames_relevantes(
         frames: Lista de caminhos de frames ordenados.
         top_percent: Porcentagem do topo a ignorar.
         threshold: Limiar de mudanca.
+        pixel_diff: Minimo de mudanca por pixel (30 padrao, 10-15 pra translucidos).
 
     Returns:
         Lista filtrada de frames relevantes.
@@ -78,14 +83,15 @@ def filtrar_frames_relevantes(
             logger.warning("Frame ilegivel, pulando: %s", frame_path)
             continue
 
-        if detectar_mudanca(frame_anterior, frame_atual, top_percent, threshold):
+        if detectar_mudanca(frame_anterior, frame_atual, top_percent, threshold, pixel_diff):
             relevantes.append(frame_path)
             frame_anterior = frame_atual
 
     logger.info(
-        "Frames relevantes: %d de %d (%.0f%% reducao)",
+        "Frames relevantes: %d de %d (%.0f%% reducao, pixel_diff=%d)",
         len(relevantes),
         len(frames),
         (1 - len(relevantes) / len(frames)) * 100 if frames else 0,
+        pixel_diff,
     )
     return relevantes

@@ -683,18 +683,21 @@ def processar_video(
 
         change_top = settings.overlay_region_top_percent
         change_threshold = settings.change_threshold
+        change_pixel_diff = 30
         if canal_youtube:
             from leilao_inteligente.pipeline.calibration import obter_captura
             captura = obter_captura(canal_youtube)
             if captura:
                 change_top = captura.get("overlay_top_percent", change_top)
                 change_threshold = captura.get("threshold", change_threshold)
-                logger.info("Captura calibrada: top=%d%%, threshold=%.4f", change_top, change_threshold)
+                change_pixel_diff = captura.get("pixel_diff", change_pixel_diff)
+                logger.info("Captura calibrada: top=%d%%, threshold=%.4f, pixel_diff=%d", change_top, change_threshold, change_pixel_diff)
 
         frames_relevantes = filtrar_frames_relevantes(
             frames,
             top_percent=change_top,
             threshold=change_threshold,
+            pixel_diff=change_pixel_diff,
         )
         progress.update(
             task, completed=True,

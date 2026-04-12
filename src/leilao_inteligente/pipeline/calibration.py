@@ -56,10 +56,13 @@ def salvar_calibracao(canal: str, calibracao: dict) -> None:
 def calibrar_captura(frames: list) -> dict:
     """Auto-calibra parâmetros de captura analisando frames amostrais.
 
-    Analisa pares de frames consecutivos para determinar:
-    - threshold ideal de change detection
-    - região do overlay (onde fica a barra de dados)
-    - sensibilidade de pixel
+    Testa combinações de:
+    - região do overlay (bottom 12% a 50%)
+    - sensibilidade de pixel (pixel_diff: 10, 15, 20, 30)
+    - threshold de mudança
+
+    Escolhe a combinação que melhor separa "mudou" de "não mudou",
+    garantindo taxa de passagem entre 20-50%.
 
     Args:
         frames: Lista de paths de frames (mínimo 10, idealmente 30+).
@@ -73,56 +76,90 @@ def calibrar_captura(frames: list) -> dict:
     if len(frames) < 5:
         return {"threshold": 0.01, "overlay_top_percent": 62, "pixel_diff": 30}
 
-    # Calcular change scores para cada região vertical
-    # Testar: bottom 15%, 20%, 25%, 30%, 38%, 50%
-    regioes = [85, 80, 75, 70, 62, 50]  # overlay_top_percent
-    scores_por_regiao: dict[int, list[float]] = {r: [] for r in regioes}
+    # Testar combinações de região × pixel_diff
+    regioes = [88, 85, 80, 75, 70, 62, 50]
+    pixel_diffs = [10, 15, 20, 30]
 
     frames_paths = [str(f) for f in frames]
-    prev_img = cv2.imread(frames_paths[0])
-
-    for fp in frames_paths[1:]:
+    # Pré-carregar imagens
+    images = []
+    for fp in frames_paths:
         img = cv2.imread(fp)
-        if img is None or prev_img is None:
-            prev_img = img
-            continue
-        if img.shape != prev_img.shape:
-            prev_img = img
-            continue
+        if img is not None:
+            images.append(img)
 
-        h = img.shape[0]
-        for regiao in regioes:
+    if len(images) < 3:
+        return {"threshold": 0.01, "overlay_top_percent": 62, "pixel_diff": 30}
+
+    melhor_config = None
+    melhor_score = -1.0
+
+    for regiao in regioes:
+        for pdiff in pixel_diffs:
+            scores = []
+            h = images[0].shape[0]
             top = int(h * regiao / 100)
-            roi_prev = cv2.cvtColor(prev_img[top:, :], cv2.COLOR_BGR2GRAY)
-            roi_curr = cv2.cvtColor(img[top:, :], cv2.COLOR_BGR2GRAY)
-            diff = np.abs(roi_curr.astype(float) - roi_prev.astype(float))
-            pct = float(np.sum(diff > 30) / diff.size)
-            scores_por_regiao[regiao].append(pct)
 
-        prev_img = img
+            for i in range(1, len(images)):
+                if images[i].shape != images[i-1].shape:
+                    continue
+                roi_prev = cv2.cvtColor(images[i-1][top:, :], cv2.COLOR_BGR2GRAY)
+                roi_curr = cv2.cvtColor(images[i][top:, :], cv2.COLOR_BGR2GRAY)
+                diff = np.abs(roi_curr.astype(float) - roi_prev.astype(float))
+                pct = float(np.sum(diff > pdiff) / diff.size)
+                scores.append(pct)
 
-    # Encontrar a melhor região: aquela onde os scores têm maior VARIÂNCIA
-    # (= onde a diferença entre "lote mudou" e "mesmo lote" é mais clara)
-    melhor_regiao = 62
-    melhor_separacao = 0.0
+            if not scores:
+                continue
 
-    for regiao, scores in scores_por_regiao.items():
-        if not scores:
-            continue
-        arr = np.array(scores)
-        # Separação = diferença entre percentil 90 e mediana
-        # Quanto maior, mais fácil distinguir "mudou" de "não mudou"
-        p90 = float(np.percentile(arr, 90))
-        mediana = float(np.median(arr))
-        separacao = p90 - mediana
+            arr = np.array(scores)
+            mediana = float(np.median(arr))
+            p75 = float(np.percentile(arr, 75))
+            p90 = float(np.percentile(arr, 90))
+            separacao = p90 - mediana
 
-        if separacao > melhor_separacao:
-            melhor_separacao = separacao
-            melhor_regiao = regiao
+            # Calcular threshold candidato
+            threshold = max(0.001, (mediana + p75) / 2)
+            taxa = float(np.sum(arr > threshold)) / len(arr) * 100
 
-    # Calcular threshold ideal para a melhor região
-    scores = np.array(scores_por_regiao[melhor_regiao])
-    mediana = float(np.median(scores))
+            # Ajustar se taxa fora do range ideal
+            if taxa < 15:
+                threshold = max(0.001, mediana * 1.5)
+                taxa = float(np.sum(arr > threshold)) / len(arr) * 100
+            if taxa > 80:
+                threshold = p75
+                taxa = float(np.sum(arr > threshold)) / len(arr) * 100
+
+            # Score de qualidade: separação alta + taxa no range 20-50%
+            taxa_penalty = abs(taxa - 35) / 35  # penalidade por distância do ideal (35%)
+            qualidade = separacao * (1 - taxa_penalty * 0.5)
+
+            if qualidade > melhor_score:
+                melhor_score = qualidade
+                melhor_config = {
+                    "threshold": round(threshold, 4),
+                    "overlay_top_percent": regiao,
+                    "pixel_diff": pdiff,
+                    "stats": {
+                        "frames_analisados": len(scores),
+                        "mediana_score": round(mediana, 4),
+                        "p75_score": round(p75, 4),
+                        "p90_score": round(p90, 4),
+                        "taxa_passagem": round(taxa, 1),
+                        "melhor_separacao": round(separacao, 4),
+                    },
+                }
+
+    if melhor_config is None:
+        return {"threshold": 0.01, "overlay_top_percent": 62, "pixel_diff": 30}
+
+    c = melhor_config
+    logger.info(
+        "Auto-calibração captura: região=%d%%, pixel_diff=%d, threshold=%.4f, taxa=%.1f%%",
+        c["overlay_top_percent"], c["pixel_diff"], c["threshold"], c["stats"]["taxa_passagem"],
+    )
+
+    return melhor_config
     p75 = float(np.percentile(scores, 75))
     p90 = float(np.percentile(scores, 90))
 
