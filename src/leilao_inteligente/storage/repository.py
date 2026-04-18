@@ -14,15 +14,19 @@ from leilao_inteligente.storage.db import get_session, init_db
 logger = logging.getLogger(__name__)
 
 
-def _normalizar_titulo(titulo: str) -> str:
+def _normalizar_titulo(titulo: str, canal: str = "") -> str:
     """Normaliza título do leilão removendo sufixos do YouTube e limpando formatação."""
     t = titulo.strip()
+
+    # Remover data no início (DD/MM/YYYY | ...) — alguns canais colocam data antes do nome
+    t = re.sub(r"^\d{2}/\d{2}/\d{4}\s*\|?\s*", "", t)
 
     # Remover sufixo genérico do YouTube: "| Leilão ao Vivo - Leilão de Gado"
     t = re.sub(r"\s*\|.*$", "", t)
 
-    # Remover " - Leilão de Gado" se sobrou
+    # Remover " - Leilão de Gado" e " - Leilão ao Vivo" (do mais longo pro mais curto)
     t = re.sub(r"\s*-\s*Leil[ãa]o\s+de\s+Gado\s*$", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\s*-\s*Leil[ãa]o\s+ao\s+Vivo\s*$", "", t, flags=re.IGNORECASE)
 
     # Remover data no final (DD/MM/YYYY ou -DD/MM/YYYY)
     t = re.sub(r"\s*-?\s*\d{2}/\d{2}/\d{4}\s*$", "", t)
@@ -32,6 +36,10 @@ def _normalizar_titulo(titulo: str) -> str:
 
     # Uppercase consistente
     t = t.upper()
+
+    # Se ficou vazio após normalização, usar nome do canal
+    if not t and canal:
+        t = canal.strip().upper()
 
     return t
 
@@ -88,7 +96,7 @@ def salvar_leilao(
         leilao = Leilao(
             canal_youtube=info.canal_youtube,
             url_video=info.url_video,
-            titulo=_normalizar_titulo(info.titulo),
+            titulo=_normalizar_titulo(info.titulo, canal=info.canal_youtube),
             data_leilao=info.data_leilao,
             local_cidade=info.local_cidade or (lotes[0].local_cidade if lotes else None),
             local_estado=info.local_estado or (lotes[0].local_estado if lotes else None),

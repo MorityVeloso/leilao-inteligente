@@ -76,7 +76,11 @@ def get_filtros():
             .all()
         ]
 
-        casas_leilao = sorted(set(l.titulo for l in session.query(Leilao).all() if l.titulo))
+        casas_raw = {}
+        for l in session.query(Leilao).all():
+            if l.titulo and l.titulo not in casas_raw:
+                casas_raw[l.titulo] = {"titulo": l.titulo, "local_cidade": l.local_cidade, "local_estado": l.local_estado}
+        casas_leilao = sorted(casas_raw.values(), key=lambda c: c["titulo"])
 
         return {
             "racas": racas,

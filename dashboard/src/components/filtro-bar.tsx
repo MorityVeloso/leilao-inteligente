@@ -21,17 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api, type Filtros } from "@/lib/api";
-
-function limparTituloLeilao(titulo: string): string {
-  return titulo
-    .replace(/LEIL[ÃA]O\s*/gi, "")
-    .replace(/\bLIVE\b/gi, "")
-    .replace(/\bLEILOEIRO\b/gi, "")
-    .replace(/\d{2}\/\d{2}\/\d{4}/g, "")
-    .replace(/\b(JENILSON|ROCHA)\b/gi, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
+import { formatLeilao, formatLeilaoCompleto, formatCidade } from "@/lib/format";
 
 interface FiltroBarProps {
   filtros: Filtros;
@@ -350,16 +340,30 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
             value={filtros.casa_leilao ?? ""}
             onValueChange={(v) => setFiltro("casa_leilao", (v ?? "") === "todos" ? undefined : (v || undefined))}
           >
-            <SelectTrigger className={triggerClass("w-[160px] h-8 text-xs", !!filtros.casa_leilao)}>
+            <SelectTrigger className={triggerClass("w-[200px] h-8 text-xs", !!filtros.casa_leilao)}>
               <SelectValue placeholder="Casa Leilão" />
             </SelectTrigger>
-            <SelectContent side="bottom" align="start" className="min-w-[300px]">
+            <SelectContent side="bottom" align="start" className="min-w-[340px]">
               <SelectItem value="todos">Todas casas</SelectItem>
-              {opcoes.casas_leilao.map((c) => (
-                <SelectItem key={c} value={c} className="text-xs">
-                  {limparTituloLeilao(c)}
-                </SelectItem>
-              ))}
+              {opcoes.casas_leilao.map((c) => {
+                let nome = formatLeilao(c.titulo);
+                const local = c.local_cidade && c.local_estado
+                  ? `${formatCidade(c.local_cidade)}-${c.local_estado.toUpperCase()}`
+                  : "";
+                // Remover cidade-UF do nome para não duplicar
+                if (local) {
+                  nome = nome
+                    .replace(new RegExp(`\\s*-?\\s*${c.local_cidade}\\s*-?\\s*${c.local_estado}`, "gi"), "")
+                    .replace(new RegExp(`\\s*-?\\s*${c.local_cidade}`, "gi"), "")
+                    .replace(/\s*-\s*$/, "")
+                    .trim();
+                }
+                return (
+                  <SelectItem key={c.titulo} value={c.titulo} className="text-xs">
+                    {local ? `${nome} - ${local}` : nome}
+                  </SelectItem>
+                );
+              })}
             </SelectContent>
           </Select>
         )}
@@ -376,15 +380,7 @@ export function FiltroBar({ filtros, setFiltro, setFaixaIdade, setFaixaPreco, se
               <SelectItem value="todos">Todos leilões</SelectItem>
               {opcoes.leiloes.map((l) => (
                 <SelectItem key={l.id} value={String(l.id)} className="text-xs">
-                  {limparTituloLeilao(l.titulo)}
-                  {l.local_cidade && (
-                    <span className="text-[10px] ml-1">- {l.local_cidade}</span>
-                  )}
-                  {l.data && (
-                    <span className="text-[10px] ml-1 opacity-60">
-                      ({new Date(l.data).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })})
-                    </span>
-                  )}
+                  {formatLeilaoCompleto(l.titulo, l.local_cidade, l.local_estado, l.data)}
                 </SelectItem>
               ))}
             </SelectContent>
